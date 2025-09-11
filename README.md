@@ -14,11 +14,13 @@ TeachAid是一个基于大语言模型的AI辅助教学平台，旨在提升教�
 ### 技术栈选型
 ```
 后端：FastAPI + Python 3.11+
-前端：Vue 3 + Element Plus + JavaScript
+前端：Vue 3.5+ + Vben Admin 5.0 + JavaScript + Ant Design Vue
+构建工具：Vite 5.0+ + Pnpm Monorepo + TurboRepo
 AI框架：LangGraph (工作流编排) + LiteLLM (多模型统一接口)
 数据库：MySQL 8.0+ (主库) + Redis 7+ (缓存)
 多模态AI：GPT-4V / Claude-3 / 通义千问VL / Yi-Vision
 监控调试：LangSmith (AI应用可观测性)
+代码规范：ESLint + Prettier + Stylelint
 部署：Docker + Nginx
 项目结构：前后端一体化目录结构
 ```
@@ -30,6 +32,8 @@ AI框架：LangGraph (工作流编排) + LiteLLM (多模型统一接口)
 - **智能模型路由**：根据任务复杂度、成本预算、性能表现自动选择最优模型
 - **故障容错机制**：模型故障时自动切换备用模型，保证服务稳定性
 - **实时监控调试**：集成LangSmith，提供完整的AI应用可观测性
+- **企业级前端架构**：基于Vben Admin 5.0，提供完善的权限管理、主题切换、国际化支持
+- **现代化工程体系**：JavaScript轻量开发，Monorepo架构，完善的代码规范
 
 ## 三、核心功能设计
 
@@ -1304,16 +1308,16 @@ async def stream_chat(
 
 ## 六、前端页面结构
 
-### 6.1 项目目录结构
+### 6.1 项目目录结构（基于Vben Admin 5.0）
 
 ```
 TeachAid/
-├── app/                   // 后端代码
-│   ├── core/             // 核心功能
+├── app/                         // FastAPI后端代码
+│   ├── core/                   // 核心功能
 │   │   ├── unified_ai_framework.py
 │   │   ├── config.py
 │   │   └── database.py
-│   ├── services/         // 业务服务
+│   ├── services/               // 业务服务
 │   │   ├── file_processor.py
 │   │   ├── prompt_template_service.py
 │   │   ├── intelligent_cache_service.py
@@ -1321,62 +1325,98 @@ TeachAid/
 │   │   ├── auth_service.py
 │   │   ├── intelligent_chat_service.py
 │   │   └── homework_service.py
-│   ├── api/              // API路由
+│   ├── api/                    // API路由
 │   │   ├── auth.py
 │   │   ├── questions.py
 │   │   ├── homework.py
 │   │   └── chat.py
-│   ├── models/           // 数据模型
+│   ├── models/                 // 数据模型
 │   │   ├── database_models.py
 │   │   └── pydantic_models.py
-│   └── main.py           // FastAPI应用入口
-├── static/               // 前端静态文件
-│   ├── views/           // 页面组件
-│   │   ├── teacher/     // 教师端页面
-│   │   │   ├── Dashboard.vue
-│   │   │   ├── QuestionManage/
-│   │   │   ├── HomeworkManage/
-│   │   │   ├── ClassManage/
-│   │   │   └── PromptManage/
-│   │   └── student/     // 学生端页面
-│   │       ├── Dashboard.vue
-│   │       ├── HomeworkList.vue
-│   │       ├── QuestionStudy/
-│   │       └── Progress.vue
-│   ├── components/      // 公共组件
-│   │   ├── QuestionViewer.vue
-│   │   ├── ChatPanel.vue
-│   │   └── FileUpload.vue
-│   ├── assets/          // 静态资源
-│   ├── router/          // 路由配置
-│   └── main.js          // Vue应用入口
-├── uploads/             // 文件上传目录
-├── logs/                // 日志文件
-├── requirements.txt     // Python依赖
-├── package.json         // Node.js依赖
-├── docker-compose.yml   // Docker配置
-└── README.md            // 项目文档
+│   └── main.py                 // FastAPI应用入口
+├── web/                        // Vben Admin前端代码
+│   ├── src/
+│   │   ├── views/             // 页面组件
+│   │   │   ├── teacher/       // 教师端页面
+│   │   │   │   ├── dashboard/
+│   │   │   │   ├── question/  // 题目管理
+│   │   │   │   ├── homework/  // 作业管理
+│   │   │   │   ├── class/     // 班级管理
+│   │   │   │   └── prompt/    // 提示词管理
+│   │   │   └── student/       // 学生端页面
+│   │   │       ├── dashboard/
+│   │   │       ├── homework/
+│   │   │       ├── study/     // 学习界面
+│   │   │       └── progress/
+│   │   ├── components/        // 业务组件
+│   │   │   ├── QuestionViewer/
+│   │   │   ├── ChatPanel/
+│   │   │   ├── FileUpload/
+│   │   │   └── AIChat/
+│   │   ├── api/              // API接口封装
+│   │   │   ├── auth.js
+│   │   │   ├── question.js
+│   │   │   ├── homework.js
+│   │   │   └── chat.js
+│   │   ├── stores/           // Pinia状态管理
+│   │   │   ├── auth.js
+│   │   │   ├── question.js
+│   │   │   └── chat.js
+│   │   ├── router/           // 路由配置
+│   │   │   ├── routes/
+│   │   │   └── index.js
+│   │   ├── utils/            // 工具函数
+│   │   ├── assets/           // 静态资源
+│   │   └── main.js           // Vue应用入口
+│   ├── public/               // 公共资源
+│   ├── package.json          // 前端依赖
+│   ├── vite.config.js        // Vite配置
+│   └── .env                  // 环境变量
+├── uploads/                  // 文件上传目录
+├── logs/                     // 日志文件
+├── requirements.txt          // Python依赖
+├── pnpm-workspace.yaml       // Pnpm Monorepo配置
+├── turbo.json                // TurboRepo配置
+├── docker-compose.yml        // Docker配置
+├── .eslintrc.js             // ESLint配置
+├── .prettierrc              // Prettier配置
+└── README.md                // 项目文档
 ```
 
-### 6.2 前端页面结构
+### 6.2 Vben Admin架构特色
 
-**教师端页面：**
-- Dashboard.vue - 教师仪表板
-- QuestionManage/ - 题目管理模块
-- HomeworkManage/ - 作业管理模块  
-- ClassManage/ - 班级管理模块
-- PromptManage/ - 提示词管理模块
+**企业级前端特性：**
+- **权限管理**：基于RBAC的细粒度权限控制，支持动态路由
+- **主题系统**：多套主题，支持暗黑模式和自定义主题色
+- **国际化**：完整的i18n支持，中英文切换
+- **响应式布局**：适配PC、平板、手机多端
+- **JavaScript**：轻量级开发，快速上手，降低学习成本
 
-**学生端页面：**
-- Dashboard.vue - 学生仪表板
-- HomeworkList.vue - 作业列表
-- QuestionStudy/ - 题目学习模块
-- Progress.vue - 学习进度
+**开发体验优化：**
+- **Monorepo**：使用Pnpm + TurboRepo管理多包架构
+- **代码规范**：ESLint + Prettier + Stylelint自动化代码规范
+- **组件封装**：高度可复用的业务组件和基础组件
+- **状态管理**：Pinia现代化状态管理，轻量高效
+- **构建优化**：Vite极速热更新，构建性能优异
 
-### 6.3 核心组件设计
+**核心页面模块：**
+
+**教师端：**
+- 仪表板：数据概览、快速入口、统计图表
+- 题目管理：上传解析、答案改写、模板配置
+- 作业管理：创建分发、进度监控、学情分析
+- 班级管理：学生管理、权限分配、数据统计
+- 系统设置：提示词管理、AI模型配置
+
+**学生端：**
+- 学习仪表板：作业列表、学习进度、成绩统计
+- 智能学习：题目展示、AI对话、笔记记录
+- 学习分析：知识点掌握、薄弱环节、学习建议
+
+### 6.3 核心组件设计（JavaScript版本）
 
 ```vue
-<!-- static/components/QuestionViewer.vue -->
+<!-- web/src/components/QuestionViewer/index.vue -->
 <template>
   <div class="question-viewer">
     <div class="question-content" v-html="formattedQuestion"></div>
@@ -1424,7 +1464,7 @@ const askAI = () => {
 ```
 
 ```vue
-<!-- static/components/ChatPanel.vue -->
+<!-- web/src/components/ChatPanel/index.vue -->
 <template>
   <div class="chat-panel">
     <div class="chat-messages" ref="messagesContainer">
@@ -1555,22 +1595,28 @@ git clone <repository_url>
 cd TeachAid
 
 # 方式一：本地开发
-# 1. 安装Python依赖
+# 1. 安装全局依赖
+npm install -g pnpm
+
+# 2. 安装Python依赖
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# 2. 安装Node.js依赖
-npm install
+# 3. 安装前端依赖（使用pnpm）
+cd web
+pnpm install
 
-# 3. 数据库初始化
+# 4. 数据库初始化
+cd ..
 alembic upgrade head
 
-# 4. 启动后端服务
+# 5. 启动后端服务
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# 5. 启动前端开发服务器（新终端）
-npm run dev
+# 6. 启动前端开发服务器（新终端）
+cd web
+pnpm dev
 
 # 方式二：Docker一键启动
 docker-compose up -d
@@ -1582,26 +1628,84 @@ docker-compose ps
 ### 项目配置文件
 
 ```json
-// package.json - Node.js依赖和脚本
+// web/package.json - 前端依赖和脚本（基于Vben Admin）
 {
-  "name": "teachaid",
+  "name": "teachaid-web",
   "version": "1.0.0",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js --fix",
+    "format": "prettier --write ."
   },
   "dependencies": {
-    "vue": "^3.4.0",
-    "element-plus": "^2.4.0",
+    "vue": "^3.5.0",
+    "ant-design-vue": "^4.2.0",
+    "pinia": "^2.1.0",
+    "vue-router": "^4.2.0",
     "axios": "^1.6.0",
-    "vue-router": "^4.2.0"
+    "@vueuse/core": "^10.0.0",
+    "lodash-es": "^4.17.21",
+    "dayjs": "^1.11.0"
   },
   "devDependencies": {
     "vite": "^5.0.0",
-    "@vitejs/plugin-vue": "^4.5.0"
+    "@vitejs/plugin-vue": "^4.5.0",
+    "eslint": "^8.55.0",
+    "eslint-plugin-vue": "^9.18.0",
+    "prettier": "^3.1.0",
+    "unplugin-auto-import": "^0.17.0",
+    "unplugin-vue-components": "^0.26.0"
   }
 }
+
+// pnpm-workspace.yaml - Monorepo配置
+packages:
+  - 'web'
+  - 'app'
+
+// web/vite.config.js - Vite配置
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import { resolve } from 'path'
+import AutoImport from 'unplugin-auto-import/vite'
+import Components from 'unplugin-vue-components/vite'
+import { AntDesignVueResolver } from 'unplugin-vue-components/resolvers'
+
+export default defineConfig({
+  plugins: [
+    vue(),
+    AutoImport({
+      imports: ['vue', 'vue-router', 'pinia'],
+      dts: true
+    }),
+    Components({
+      resolvers: [AntDesignVueResolver()],
+      dts: true
+    })
+  ],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src')
+    }
+  },
+  server: {
+    host: '0.0.0.0',
+    port: 3000,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      }
+    }
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    chunkSizeWarningLimit: 2000
+  }
+})
 ```
 
 ```dockerfile
@@ -1620,14 +1724,16 @@ COPY . .
 # 安装Python依赖
 RUN pip install -r requirements.txt
 
-# 安装Node.js依赖并构建前端
-RUN npm install && npm run build
+# 安装pnpm并构建前端
+RUN npm install -g pnpm
+COPY web/ ./web/
+RUN cd web && pnpm install && pnpm build
 
 # 暴露端口
 EXPOSE 8000 3000
 
 # 启动脚本
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 & npm run preview -- --host 0.0.0.0 --port 3000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 & cd web && pnpm preview -- --host 0.0.0.0 --port 3000"]
 ```
 
 ## 八、总结
