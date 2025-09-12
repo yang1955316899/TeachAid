@@ -96,15 +96,8 @@
           
           <!-- 文本选择提示 -->
           <div v-if="selectedText" class="selection-popup">
-            <div class="selection-text">已选择: "{{ selectedText.substring(0, 30) }}..."</div>
-            <a-button
-              type="primary"
-              size="small"
-              @click="askAI"
-              class="ask-button"
-            >
-              <RobotOutlined /> 询问AI
-            </a-button>
+            <div class="selection-text">已选择文本: "{{ selectedText.substring(0, 30) }}{{ selectedText.length > 30 ? '...' : '' }}"</div>
+            <div class="selection-hint">💡 可以在右侧AI助手中询问相关问题</div>
           </div>
           
           <!-- 浮动工具栏 -->
@@ -194,10 +187,26 @@
           </div>
 
           <div class="chat-input">
+            <!-- 选择文本提示 -->
+            <div v-if="selectedText" class="selected-text-hint">
+              <div class="hint-content">
+                <span class="hint-icon">✨</span>
+                <span class="hint-text">你选择了: "{{ selectedText.substring(0, 50) }}{{ selectedText.length > 50 ? '...' : '' }}"</span>
+                <a-button 
+                  type="text" 
+                  size="small" 
+                  @click="clearSelection"
+                  class="clear-selection"
+                >
+                  <CloseOutlined />
+                </a-button>
+              </div>
+            </div>
+            
             <div class="input-wrapper">
               <a-textarea
                 v-model:value="inputMessage"
-                placeholder="输入你的问题... (Ctrl+Enter 发送)"
+                :placeholder="selectedText ? '询问关于选中内容的问题...' : '输入你的问题... (Ctrl+Enter 发送)'"
                 :auto-size="{ minRows: 1, maxRows: 3 }"
                 @keydown.ctrl.enter="sendMessage"
                 class="chat-textarea"
@@ -232,7 +241,8 @@ import {
   CopyOutlined,
   HeartOutlined,
   SoundOutlined,
-  BookOutlined
+  BookOutlined,
+  CloseOutlined
 } from '@ant-design/icons-vue'
 
 export default {
@@ -249,7 +259,8 @@ export default {
     CopyOutlined,
     HeartOutlined,
     SoundOutlined,
-    BookOutlined
+    BookOutlined,
+    CloseOutlined
   },
   data() {
     return {
@@ -311,25 +322,28 @@ export default {
         this.selectedText = ''
       }
     },
-    askAI() {
-      if (this.selectedText) {
-        this.inputMessage = `我对这部分内容有疑问：「${this.selectedText}」`
-        this.sendMessage()
-        this.selectedText = ''
-      }
+    clearSelection() {
+      this.selectedText = ''
     },
     async sendMessage() {
       if (!this.inputMessage.trim() || this.sending) return
 
+      // 构建消息内容
+      let messageContent = this.inputMessage
+      if (this.selectedText) {
+        messageContent = `关于选中的内容"${this.selectedText}"，${this.inputMessage}`
+      }
+
       const userMessage = {
         id: Date.now(),
         role: 'user',
-        content: this.inputMessage,
+        content: messageContent,
         time: new Date().toLocaleTimeString('zh-CN', { hour12: false }).slice(0, 5)
       }
 
       this.chatMessages.push(userMessage)
       this.inputMessage = ''
+      this.selectedText = '' // 发送后清除选择
       this.sending = true
 
       // 模拟AI回复
@@ -683,7 +697,7 @@ export default {
 /* 浮动工具栏 */
 .floating-toolbar {
   position: absolute;
-  top: 20px;
+  top: 100px;
   right: 20px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
@@ -730,24 +744,27 @@ export default {
   position: absolute;
   bottom: 20px;
   right: 20px;
-  background: white;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
   border-radius: 12px;
   padding: 12px 16px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  border: 1px solid #e6f7ff;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
   animation: slideUp 0.3s ease;
+  max-width: 300px;
 }
 
 .selection-text {
   font-size: 12px;
-  color: #595959;
+  color: #3b82f6;
+  font-weight: 500;
+  margin-bottom: 4px;
 }
 
-.ask-button {
-  border-radius: 8px;
+.selection-hint {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
 }
 
 @keyframes slideUp {
@@ -916,6 +933,51 @@ export default {
 .chat-input {
   padding: 20px;
   border-top: 1px solid #f0f0f0;
+}
+
+/* 选择文本提示 */
+.selected-text-hint {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 12px;
+  animation: slideDown 0.3s ease;
+}
+
+.hint-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hint-icon {
+  font-size: 14px;
+}
+
+.hint-text {
+  flex: 1;
+  font-size: 13px;
+  color: #3b82f6;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.clear-selection {
+  color: #64748b;
+  padding: 4px;
+  min-width: auto;
+  height: auto;
+}
+
+.clear-selection:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .input-wrapper {
