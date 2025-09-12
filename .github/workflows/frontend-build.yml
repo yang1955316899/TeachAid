@@ -1,0 +1,40 @@
+name: Frontend Build
+
+on:
+  push:
+    branches: [ master, main, develop ]
+    paths: 
+      - 'src/**'
+      - 'package.json'
+      - 'vite.config.js'
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 设置Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: 安装前端依赖
+      run: |
+        npm install
+
+    - name: 构建前端
+      run: |
+        npm run build
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-dist
+        path: dist/

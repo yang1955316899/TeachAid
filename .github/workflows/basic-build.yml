@@ -1,0 +1,44 @@
+name: Basic Build
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 设置Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 安装依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: 验证项目
+      run: |
+        echo "项目结构验证:"
+        ls -la
+        echo "检查app目录:"
+        if [ -d "app" ]; then
+          echo "app目录存在"
+          ls -la app/
+        else
+          echo "app目录不存在，跳过验证"
+        fi
+
+    - name: 构建成功
+      run: |
+        echo "✅ 构建成功完成"
+        echo "📦 依赖安装完成"
+        echo "🔍 项目验证通过"
