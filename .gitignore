@@ -1,36 +1,4 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual Environment
-venv/
-env/
-ENV/
-.venv/
-.env/
-
-# IDE
+# 集成开发环境
 .vscode/
 .idea/
 *.swp
@@ -45,35 +13,35 @@ yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
 
-# Runtime data
+# 运行时数据
 pids
 *.pid
 *.seed
 *.pid.lock
 
-# Coverage directory used by tools like istanbul
+# 代码覆盖率目录（用于istanbul等工具）
 coverage/
 *.lcov
 
-# nyc test coverage
+# nyc测试覆盖率
 .nyc_output
 
-# Dependency directories
+# 依赖目录
 jspm_packages/
 
-# Optional npm cache directory
+# 可选的npm缓存目录
 .npm
 
-# Optional REPL history
+# 可选的REPL历史记录
 .node_repl_history
 
-# Output of 'npm pack'
+# npm pack输出
 *.tgz
 
-# Yarn Integrity file
+# Yarn完整性文件
 .yarn-integrity
 
-# dotenv environment variables file
+# dotenv环境变量文件
 .env
 .env.test
 .env.local
@@ -81,52 +49,37 @@ jspm_packages/
 .env.test.local
 .env.production.local
 
-# parcel-bundler cache (https://parceljs.org/)
+# parcel-bundler缓存 (https://parceljs.org/)
 .cache
 .parcel-cache
 
-# Next.js build output
+# Next.js构建输出
 .next
 
-# Nuxt.js build / generate output
+# Nuxt.js构建/生成输出
 .nuxt
 dist
 
-# Gatsby files
+# Gatsby文件
 .cache/
 public
 
-# Vuepress build output
+# Vuepress构建输出
 .vuepress/dist
 
-# Serverless directories
+# 无服务器目录
 .serverless/
 
-# FuseBox cache
+# FuseBox缓存
 .fusebox/
 
-# DynamoDB Local files
+# DynamoDB本地文件
 .dynamodb/
 
-# TernJS port file
+# TernJS端口文件
 .tern-port
 
-# Database
-*.db
-*.sqlite
-
-# Logs
-logs/
-*.log
-
-# Uploads
-uploads/
-temp/
-
-# Docker
-.dockerignore
-
-# OS
+# 操作系统
 .DS_Store
 .DS_Store?
 ._*
@@ -135,34 +88,81 @@ temp/
 ehthumbs.db
 Thumbs.db
 
-# JetBrains IDEs
+# JetBrains IDE
 .idea/
 *.iws
 *.iml
 *.ipr
 
-# AI API Keys (security)
+# AI API密钥（安全）
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
-config/secrets.py
-secrets.json
 
-# Build outputs
+# 构建输出
 dist/
 build/
 .output/
 
-# Cache
+# 缓存
 .cache/
 .temp/
 .tmp/
 
-# Test coverage
+# 测试覆盖率
 coverage/
 .coverage
 htmlcov/
 
-# Pytest
-.pytest_cache/
+# 本地开发文件
+auto-imports.d.ts
+components.d.ts
+
+# Python项目文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Python虚拟环境
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venvs/
+
+# UV包管理器
+.python-version
+.uv/
+
+# 项目特定
+uploads/
+logs/
+*.log
+temp/
+tmp/
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# AI模型缓存
+models/

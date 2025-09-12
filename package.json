@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "description": "TeachAid AI辅助教学平台 - 前后端一体化项目",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 3000",
+    "dev": "vite --host 0.0.0.0 --port 50001",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js --fix",
     "format": "prettier --write .",
-    "backend": "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+    "backend": "uvicorn app.main:app --reload --host 0.0.0.0 --port 50002"
   },
   "dependencies": {
     "vue": "^3.5.0",

@@ -15,7 +15,7 @@ export default defineConfig({
     Components({
       resolvers: [
         AntDesignVueResolver({
-          importStyle: false, // css in js
+          importStyle: false, // CSS 内联样式
         })
       ],
       dts: true
@@ -28,10 +28,10 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 3000,
+    port: 50001,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:50002',
         changeOrigin: true
       }
     }
