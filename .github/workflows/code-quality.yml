@@ -1,0 +1,53 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 设置Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 安装依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: 代码格式化检查
+      run: |
+        black --check --diff .
+        isort --check-only --diff .
+
+    - name: 静态类型检查
+      run: |
+        pip install mypy
+        mypy app/ --ignore-missing-imports
+
+    - name: 代码复杂度检查
+      run: |
+        pip install radon
+        radon cc app/ -a -nb
+
+    - name: 生成覆盖率报告
+      run: |
+        pip install coverage pytest-cov
+        python -m pytest --cov=app --cov-report=xml
+        coverage xml
+
+    - name: 上传覆盖率报告
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
