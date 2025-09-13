@@ -14,56 +14,72 @@ from app.models.database_models import Class
 from app.models.pydantic_models import (
     BaseResponse, PaginationQuery, PaginationResponse
 )
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/classes", tags=["班级管理"])
 
 
 # 简化的请求/响应模型
-class ClassCreate:
+class ClassCreate(BaseModel):
     """创建班级请求"""
-    def __init__(self, name: str, description: str = None, grade_level: str = None, 
-                 subject: str = None, max_students: int = 50):
-        self.name = name
-        self.description = description
-        self.grade_level = grade_level
-        self.subject = subject
-        self.max_students = max_students
+    name: str
+    description: str = None
+    grade_level: str = None
+    subject: str = None
+    max_students: int = 50
 
 
-class ClassUpdate:
+class ClassUpdate(BaseModel):
     """更新班级请求"""
-    def __init__(self, name: str = None, description: str = None, grade_level: str = None,
-                 subject: str = None, max_students: int = None, is_active: bool = None):
-        self.name = name
-        self.description = description
-        self.grade_level = grade_level
-        self.subject = subject
-        self.max_students = max_students
-        self.is_active = is_active
+    name: str = None
+    description: str = None
+    grade_level: str = None
+    subject: str = None
+    max_students: int = None
+    is_active: bool = None
 
 
-class ClassResponse:
+class ClassResponse(BaseModel):
     """班级响应"""
-    def __init__(self, class_obj):
-        self.id = class_obj.id
-        self.name = class_obj.name
-        self.description = class_obj.description
-        self.grade_level = class_obj.grade_level
-        self.subject = class_obj.subject
-        self.teacher_id = class_obj.teacher_id
-        self.organization_id = class_obj.organization_id
-        self.max_students = class_obj.max_students
-        self.is_active = class_obj.is_active
-        self.created_at = class_obj.created_at.isoformat() if class_obj.created_at else None
-        self.updated_at = class_obj.updated_at.isoformat() if class_obj.updated_at else None
+    id: int
+    name: str
+    description: str = None
+    grade_level: str = None
+    subject: str = None
+    teacher_id: int
+    organization_id: int = None
+    max_students: int
+    is_active: bool
+    created_at: str = None
+    updated_at: str = None
+    teacher_name: str = None
+    organization_name: str = None
+    
+    @classmethod
+    def from_orm(cls, class_obj):
+        data = {
+            "id": class_obj.id,
+            "name": class_obj.name,
+            "description": class_obj.description,
+            "grade_level": class_obj.grade_level,
+            "subject": class_obj.subject,
+            "teacher_id": class_obj.teacher_id,
+            "organization_id": class_obj.organization_id,
+            "max_students": class_obj.max_students,
+            "is_active": class_obj.is_active,
+            "created_at": class_obj.created_at.isoformat() if class_obj.created_at else None,
+            "updated_at": class_obj.updated_at.isoformat() if class_obj.updated_at else None,
+            "teacher_name": None,
+            "organization_name": None
+        }
         
         # 关联信息
-        self.teacher_name = None
-        self.organization_name = None
         if hasattr(class_obj, 'teacher') and class_obj.teacher:
-            self.teacher_name = class_obj.teacher.user_full_name
+            data["teacher_name"] = class_obj.teacher.user_full_name
         if hasattr(class_obj, 'organization') and class_obj.organization:
-            self.organization_name = class_obj.organization.organization_name
+            data["organization_name"] = class_obj.organization.organization_name
+            
+        return cls(**data)
 
 
 @router.get("", response_model=PaginationResponse, summary="获取班级列表")
