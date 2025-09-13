@@ -130,15 +130,6 @@
           </a-form-item>
         </a-form>
 
-        <div class="demo-tips">
-          <a-alert
-            message="演示账户"
-            description="教师账户：teacher123 | 学生账户：student123 | 密码任意"
-            type="info"
-            show-icon
-            :closable="false"
-          />
-        </div>
       </div>
     </div>
   </div>
@@ -146,6 +137,7 @@
 
 <script>
 import { UserOutlined, LockOutlined } from '@ant-design/icons-vue'
+import { useAuthStore } from '@/stores/auth'
 
 export default {
   name: 'Login',
@@ -175,17 +167,24 @@ export default {
     async handleLogin() {
       this.loading = true
       try {
-        // 模拟登录
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        const authStore = useAuthStore()
+        const result = await authStore.login(this.form)
         
-        // 根据用户类型跳转
-        if (this.form.username.includes('teacher')) {
-          this.$router.push('/teacher/dashboard')
+        if (result.success) {
+          // 根据用户角色跳转
+          if (authStore.isTeacher) {
+            this.$router.push('/teacher/dashboard')
+          } else {
+            this.$router.push('/student/dashboard')
+          }
         } else {
-          this.$router.push('/student/dashboard')
+          // 显示错误信息
+          this.$message.error(result.message || '登录失败')
         }
       } catch (error) {
         console.error('登录失败:', error)
+        const errorMessage = error.response?.data?.detail || error.message || '登录失败，请检查用户名和密码'
+        this.$message.error(errorMessage)
       } finally {
         this.loading = false
       }
@@ -815,15 +814,6 @@ export default {
   transform: translateY(0) scale(0.98);
 }
 
-.demo-tips {
-  margin-top: 24px;
-}
-
-.demo-tips :deep(.ant-alert) {
-  border-radius: 12px;
-  border: 1px solid #e0f2fe;
-  background: #f0f9ff;
-}
 
 /* 响应式设计 */
 @media (max-width: 768px) {

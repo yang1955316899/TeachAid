@@ -244,6 +244,9 @@ import {
   BookOutlined,
   CloseOutlined
 } from '@ant-design/icons-vue'
+import { useQuestionStore } from '@/stores/question'
+import { useChatStore } from '@/stores/chat'
+import { storeToRefs } from 'pinia'
 
 export default {
   name: 'StudentStudy',
@@ -265,33 +268,31 @@ export default {
   data() {
     return {
       currentQuestion: 1,
-      totalQuestions: 5,
       selectedText: '',
       inputMessage: '',
       sending: false,
       regenerating: false,
       isLiked: false,
       isReading: false,
-      chatMessages: [
-        {
-          id: 1,
-          role: 'assistant',
-          content: '你好！我是你的AI学习助手，有什么问题可以随时问我。我会引导你一步步思考，而不是直接给出答案 😊',
-          time: '09:00'
-        }
-      ],
-      questions: [
-        {
-          id: 1,
-          title: '二次函数的图像与性质',
-          subject: '数学',
-          content: '<p>已知二次函数 f(x) = ax² + bx + c，其中 a > 0...</p>',
-          rewrittenAnswer: '<p>让我们一步步来分析这个二次函数问题...</p>'
-        }
-      ]
+      loadingQuestions: false
     }
   },
   computed: {
+    questionStore() {
+      return useQuestionStore()
+    },
+    chatStore() {
+      return useChatStore()
+    },
+    questions() {
+      return this.questionStore.questions
+    },
+    totalQuestions() {
+      return this.questions.length || 0
+    },
+    chatMessages() {
+      return this.chatStore.messages
+    },
     currentQuestionData() {
       return this.questions[this.currentQuestion - 1] || {}
     },
@@ -303,7 +304,26 @@ export default {
       }
     }
   },
+  mounted() {
+    this.loadQuestions()
+  },
   methods: {
+    async loadQuestions() {
+      this.loadingQuestions = true
+      try {
+        await this.questionStore.fetchQuestions({
+          page: 1,
+          size: 50, // 获取更多题目供学习使用
+          is_public: true // 学生只能看公开题目
+        })
+      } catch (error) {
+        console.error('加载题目失败:', error)
+        this.$message.error('加载题目失败')
+      } finally {
+        this.loadingQuestions = false
+      }
+    },
+
     prevQuestion() {
       if (this.currentQuestion > 1) {
         this.currentQuestion--
@@ -328,38 +348,25 @@ export default {
     async sendMessage() {
       if (!this.inputMessage.trim() || this.sending) return
 
-      // 构建消息内容
-      let messageContent = this.inputMessage
-      if (this.selectedText) {
-        messageContent = `关于选中的内容"${this.selectedText}"，${this.inputMessage}`
-      }
-
-      const userMessage = {
-        id: Date.now(),
-        role: 'user',
-        content: messageContent,
-        time: new Date().toLocaleTimeString('zh-CN', { hour12: false }).slice(0, 5)
-      }
-
-      this.chatMessages.push(userMessage)
-      this.inputMessage = ''
-      this.selectedText = '' // 发送后清除选择
       this.sending = true
-
-      // 模拟AI回复
-      setTimeout(() => {
-        const aiMessage = {
-          id: Date.now() + 1,
-          role: 'assistant',
-          content: '这是一个很好的问题！让我来帮你分析一下...',
-          time: new Date().toLocaleTimeString('zh-CN', { hour12: false }).slice(0, 5)
+      try {
+        // 确保有活跃的对话会话
+        if (!this.chatStore.currentSession && this.currentQuestionData) {
+          await this.chatStore.startChatSession(this.currentQuestionData.id)
         }
-        this.chatMessages.push(aiMessage)
-        this.sending = false
-        this.scrollToBottom()
-      }, 1000)
 
-      this.scrollToBottom()
+        // 发送消息
+        await this.chatStore.sendMessage(this.inputMessage, this.selectedText)
+        
+        this.inputMessage = ''
+        this.selectedText = '' // 发送后清除选择
+        this.scrollToBottom()
+      } catch (error) {
+        console.error('发送消息失败:', error)
+        this.$message.error('发送消息失败')
+      } finally {
+        this.sending = false
+      }
     },
     scrollToBottom() {
       this.$nextTick(() => {
@@ -370,14 +377,7 @@ export default {
       })
     },
     clearChat() {
-      this.chatMessages = [
-        {
-          id: 1,
-          role: 'assistant',
-          content: '对话已清空，有什么新问题可以随时问我！',
-          time: new Date().toLocaleTimeString('zh-CN', { hour12: false }).slice(0, 5)
-        }
-      ]
+      this.chatStore.clearCurrentSession()
     },
     async regenerateAnswer() {
       this.regenerating = true

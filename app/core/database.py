@@ -13,8 +13,6 @@ from app.core.config import settings
 engine = create_async_engine(
     settings.database.url,
     echo=settings.database.echo,
-    pool_size=settings.database.pool_size,
-    max_overflow=settings.database.max_overflow,
     poolclass=StaticPool,
 )
 
@@ -25,7 +23,7 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False
 )
 
-# 数据库基类
+# 数据库基类 注意：需要保证所有模型使用相同的Base
 Base = declarative_base()
 
 
@@ -45,10 +43,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_db():
     """初始化数据库表"""
     async with engine.begin() as conn:
-        # 导入所有模型
+        # 导入所有数据模型
         from app.models.database_models import (
-            User, Organization, Class, Question, PromptTemplate,
+            Class, Question, PromptTemplate,
             Homework, StudentHomework, ChatSession, ChatMessage, FileUpload
+        )
+        
+        # 导入认证系统数据模型
+        from app.models.auth_models import (
+            ConfigUser, ConfigOrganization, LogLogin,
+            ConfigPermission, ConfigRolePermission, SystemSettings, LogAudit
         )
         
         # 创建所有表

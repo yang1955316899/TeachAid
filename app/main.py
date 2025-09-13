@@ -13,7 +13,10 @@ import uvicorn
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
-from app.api import auth, questions
+from app.core.redis_client import init_redis, close_redis
+from app.core.security import security_middleware
+from app.core.error_handler import error_handler
+from app.api import auth, questions, chat, public, classes, homework, prompts, files
 from app.models.pydantic_models import BaseResponse
 
 
@@ -28,8 +31,11 @@ async def lifespan(app: FastAPI):
         await init_db()
         logger.info("数据库初始化成功")
         
+        # 初始化Redis
+        await init_redis()
+        logger.info("Redis初始化成功")
+        
         # 其他初始化操作
-        # await init_redis()
         # await init_ai_models()
         
         logger.info("TeachAid应用启动完成")
@@ -46,6 +52,9 @@ async def lifespan(app: FastAPI):
     try:
         await close_db()
         logger.info("数据库连接已关闭")
+        
+        await close_redis()
+        logger.info("Redis连接已关闭")
         
     except Exception as e:
         logger.error(f"应用关闭时出错: {e}")
@@ -82,50 +91,101 @@ app = FastAPI(
 # 中间件配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # 前端地址
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000",
+        "http://localhost:50001", 
+        "http://127.0.0.1:50001",
+        "http://localhost:50005", 
+        "http://127.0.0.1:50005",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000"
+    ],  # 前端地址
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,
 )
+
+@app.middleware("http")
+async def options_middleware(request: Request, call_next):
+    """处理OPTIONS预检请求"""
+    if request.method == "OPTIONS":
+        return JSONResponse(
+            content={"success": True},
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Max-Age": "600",
+            }
+        )
+    
+    response = await call_next(request)
+    return response
 
 app.add_middleware(
     TrustedHostMiddleware, 
     allowed_hosts=["localhost", "127.0.0.1", "*.teachaid.com"]
 )
 
+@app.middleware("http")
+async def security_middleware_handler(request: Request, call_next):
+    """安全中间件"""
+    try:
+        # 安全检查
+        security_info = await security_middleware.check_request_security(request)
+        
+        # 处理请求
+        response = await call_next(request)
+        
+        # 添加安全响应头
+        security_headers = security_middleware.get_security_headers()
+        for header, value in security_headers.items():
+            response.headers[header] = value
+        
+        # 添加安全评分头（仅在调试模式）
+        if settings.debug:
+            response.headers['X-Security-Score'] = str(security_info['security_score'])
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"安全中间件错误: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "服务器内部错误"}
+        )
+
 
 # 全局异常处理
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """HTTP异常处理"""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "success": False,
-            "message": exc.detail,
-            "error_code": exc.status_code
-        }
-    )
+    return await error_handler.handle_exception(request, exc)
 
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """通用异常处理"""
-    logger.error(f"未处理的异常: {exc}", exc_info=True)
-    
-    return JSONResponse(
-        status_code=500,
-        content={
-            "success": False,
-            "message": "服务器内部错误，请稍后重试",
-            "error_code": 500
-        }
-    )
+    return await error_handler.handle_exception(request, exc)
 
 
 # 注册路由
 app.include_router(auth.router, prefix="/api")
 app.include_router(questions.router, prefix="/api")
+app.include_router(chat.router, prefix="/api")
+app.include_router(public.router, prefix="/api")
+app.include_router(classes.router, prefix="/api")
+app.include_router(homework.router, prefix="/api")
+app.include_router(prompts.router, prefix="/api")
+app.include_router(files.router, prefix="/api")
+app.include_router(homework.router_student, prefix="/api")
 
 
 # 根路径

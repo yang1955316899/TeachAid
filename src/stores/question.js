@@ -1,11 +1,19 @@
 import { defineStore } from 'pinia'
+import { questionApi } from '@/api/question'
+import { message } from 'ant-design-vue'
 
 export const useQuestionStore = defineStore('question', {
   state: () => ({
     questions: [],
     currentQuestion: null,
     loading: false,
-    uploadProgress: 0
+    uploadProgress: 0,
+    pagination: {
+      current: 1,
+      pageSize: 10,
+      total: 0,
+      pages: 0
+    }
   }),
   
   getters: {
@@ -16,121 +24,212 @@ export const useQuestionStore = defineStore('question', {
   },
   
   actions: {
+    /**
+     * 获取题目列表
+     */
     async fetchQuestions(params = {}) {
       this.loading = true
       try {
-        // 模拟API调用
-        const response = await this.mockFetchQuestions(params)
-        this.questions = response.data
-        return response
+        const response = await questionApi.getQuestions(params)
+        if (response.success) {
+          this.questions = response.data.items
+          this.pagination = {
+            current: response.data.page,
+            pageSize: response.data.size,
+            total: response.data.total,
+            pages: response.data.pages
+          }
+          return response
+        } else {
+          throw new Error(response.message || '获取题目列表失败')
+        }
       } catch (error) {
         console.error('获取题目失败:', error)
+        message.error('获取题目列表失败')
         throw error
       } finally {
         this.loading = false
       }
     },
-    
+
+    /**
+     * 获取题目详情
+     */
+    async fetchQuestion(id) {
+      this.loading = true
+      try {
+        const response = await questionApi.getQuestion(id)
+        if (response.success) {
+          this.currentQuestion = response.data
+          return response.data
+        } else {
+          throw new Error(response.message || '获取题目详情失败')
+        }
+      } catch (error) {
+        console.error('获取题目详情失败:', error)
+        message.error('获取题目详情失败')
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
+    /**
+     * 创建题目
+     */
+    async createQuestion(data) {
+      this.loading = true
+      try {
+        const response = await questionApi.createQuestion(data)
+        if (response.success) {
+          message.success('题目创建成功')
+          return response.data
+        } else {
+          throw new Error(response.message || '创建题目失败')
+        }
+      } catch (error) {
+        console.error('创建题目失败:', error)
+        message.error('创建题目失败')
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
+    /**
+     * 更新题目
+     */
+    async updateQuestion(id, data) {
+      this.loading = true
+      try {
+        const response = await questionApi.updateQuestion(id, data)
+        if (response.success) {
+          message.success('题目更新成功')
+          // 更新本地数据
+          const index = this.questions.findIndex(q => q.id === id)
+          if (index !== -1) {
+            this.questions[index] = { ...this.questions[index], ...data }
+          }
+          if (this.currentQuestion && this.currentQuestion.id === id) {
+            this.currentQuestion = { ...this.currentQuestion, ...data }
+          }
+          return response.data
+        } else {
+          throw new Error(response.message || '更新题目失败')
+        }
+      } catch (error) {
+        console.error('更新题目失败:', error)
+        message.error('更新题目失败')
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
+    /**
+     * 删除题目
+     */
+    async deleteQuestion(id) {
+      this.loading = true
+      try {
+        const response = await questionApi.deleteQuestion(id)
+        if (response.success) {
+          message.success('题目删除成功')
+          // 从本地数据中移除
+          this.questions = this.questions.filter(q => q.id !== id)
+          if (this.currentQuestion && this.currentQuestion.id === id) {
+            this.currentQuestion = null
+          }
+          return response
+        } else {
+          throw new Error(response.message || '删除题目失败')
+        }
+      } catch (error) {
+        console.error('删除题目失败:', error)
+        message.error('删除题目失败')
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
+    /**
+     * 上传题目文件
+     */
     async uploadQuestion(file) {
       try {
         this.uploadProgress = 0
-        // 模拟上传进度
-        const progressInterval = setInterval(() => {
-          this.uploadProgress += 10
-          if (this.uploadProgress >= 100) {
-            clearInterval(progressInterval)
-          }
-        }, 200)
-        
-        const response = await this.mockUploadQuestion(file)
-        return response
+        const response = await questionApi.uploadQuestionFile(file)
+        if (response.success) {
+          message.success('文件上传成功')
+          return response.data
+        } else {
+          throw new Error(response.message || '文件上传失败')
+        }
       } catch (error) {
         console.error('上传题目失败:', error)
+        message.error('文件上传失败')
         throw error
       }
     },
-    
+
+    /**
+     * 改写答案
+     */
     async rewriteAnswer(questionId, config) {
+      this.loading = true
       try {
-        const response = await this.mockRewriteAnswer(questionId, config)
-        // 更新本地题目数据
-        const index = this.questions.findIndex(q => q.id === questionId)
-        if (index !== -1) {
-          this.questions[index] = { ...this.questions[index], ...response.data }
+        const response = await questionApi.rewriteAnswer(questionId, config)
+        if (response.success) {
+          message.success('答案改写成功')
+          // 更新本地题目数据
+          const index = this.questions.findIndex(q => q.id === questionId)
+          if (index !== -1) {
+            this.questions[index] = { 
+              ...this.questions[index], 
+              rewritten_answer: response.data.rewritten_answer,
+              quality_score: response.data.quality_score
+            }
+          }
+          if (this.currentQuestion && this.currentQuestion.id === questionId) {
+            this.currentQuestion = {
+              ...this.currentQuestion,
+              rewritten_answer: response.data.rewritten_answer,
+              quality_score: response.data.quality_score
+            }
+          }
+          return response.data
+        } else {
+          throw new Error(response.message || '改写答案失败')
         }
-        return response
       } catch (error) {
         console.error('改写答案失败:', error)
+        message.error('改写答案失败')
         throw error
+      } finally {
+        this.loading = false
       }
     },
-    
+
+    /**
+     * 设置当前题目
+     */
     setCurrentQuestion(question) {
       this.currentQuestion = question
     },
-    
-    // 模拟API方法
-    async mockFetchQuestions(params) {
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            data: [
-              {
-                id: '1',
-                title: '二次函数综合应用题',
-                subject: '数学',
-                type: '解答题',
-                content: '已知二次函数f(x) = ax² + bx + c...',
-                originalAnswer: '原始解答步骤...',
-                rewrittenAnswer: 'AI改写后的引导式解答...',
-                createTime: '2024-01-15',
-                status: '已改写'
-              },
-              {
-                id: '2',
-                title: '英语完形填空',
-                subject: '英语',
-                type: '选择题',
-                content: 'The following passage...',
-                originalAnswer: 'A B C D',
-                rewrittenAnswer: '让我们一起分析每个选项...',
-                createTime: '2024-01-14',
-                status: '待改写'
-              }
-            ],
-            total: 20
-          })
-        }, 500)
-      })
-    },
-    
-    async mockUploadQuestion(file) {
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            success: true,
-            data: {
-              id: Date.now().toString(),
-              filename: file.name,
-              status: 'processing'
-            }
-          })
-        }, 2000)
-      })
-    },
-    
-    async mockRewriteAnswer(questionId, config) {
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            success: true,
-            data: {
-              rewrittenAnswer: '这是AI改写后的引导式答案...',
-              status: '已改写'
-            }
-          })
-        }, 1500)
-      })
+
+    /**
+     * 清空题目列表
+     */
+    clearQuestions() {
+      this.questions = []
+      this.currentQuestion = null
+      this.pagination = {
+        current: 1,
+        pageSize: 10,
+        total: 0,
+        pages: 0
+      }
     }
   }
 })
