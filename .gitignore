@@ -1,201 +1,68 @@
-# 集成开发环境
+# 系统生成的问题文件
+nul
+
+# 日志文件
+*.log
+logs/
+backend.log
+
+# 依赖目录
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+
+# 环境配置文件
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 构建输出
+dist/
+build/
+*.egg-info/
+
+# IDE和编辑器
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-.pnpm-debug.log*
-
-# 运行时数据
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# 代码覆盖率目录（用于istanbul等工具）
-coverage/
-*.lcov
-
-# nyc测试覆盖率
-.nyc_output
-
-# 依赖目录
-jspm_packages/
-
-# 可选的npm缓存目录
-.npm
-
-# 可选的REPL历史记录
-.node_repl_history
-
-# npm pack输出
-*.tgz
-
-# Yarn完整性文件
-.yarn-integrity
-
-# dotenv环境变量文件
-.env
-.env.test
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# parcel-bundler缓存 (https://parceljs.org/)
-.cache
-.parcel-cache
-
-# Next.js构建输出
-.next
-
-# Nuxt.js构建/生成输出
-.nuxt
-dist
-
-# Gatsby文件
-.cache/
-public
-
-# Vuepress构建输出
-.vuepress/dist
-
-# 无服务器目录
-.serverless/
-
-# FuseBox缓存
-.fusebox/
-
-# DynamoDB本地文件
-.dynamodb/
-
-# TernJS端口文件
-.tern-port
-
-# 操作系统
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# JetBrains IDE
-.idea/
-*.iws
-*.iml
-*.ipr
-
-# AI API密钥（安全）
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-config/secrets.py
-secrets.json
-
-# 构建输出
-dist/
-build/
-.output/
-
-# 缓存
-.cache/
-.temp/
-.tmp/
-
-# 测试覆盖率
-coverage/
-.coverage
-htmlcov/
-
-# 本地开发文件
-auto-imports.d.ts
-components.d.ts
-
-# Python项目文件
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Python虚拟环境
-venv/
-ENV/
-env.bak/
-venv.bak/
-.venvs/
-
-# UV包管理器
-.python-version
-.uv/
-
-# 项目特定
-uploads/
-logs/
-*.log
-temp/
-tmp/
-
-# 数据库文件
-*.db
-*.sqlite
-*.sqlite3
-
-# AI模型缓存
-models/
-
-# Pytest
-.pytest_cache/
-
-# 数据库迁移版本（保留最新的几个）
-alembic/versions/*.py
-!alembic/versions/__init__.py
-
-# 测试数据库
-test_*.db
-test_*.sqlite
-test_*.sqlite3
-
-# LangSmith追踪
-langchain_runs/
-langchain_datasets/
-
-# 临时文件和缓存
-.cache/
-*.cache
-.ruff_cache/
-.mypy_cache/
-
 # 系统文件
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# 上传文件
+uploads/*
+!uploads/.gitkeep
+
+# 临时文件
+*.tmp
+*.temp
+.cache/
+
+# Redis dump文件
+dump.rdb
+
+# 测试覆盖率
+.coverage
+htmlcov/
+.pytest_cache/
