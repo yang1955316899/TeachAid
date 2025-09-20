@@ -158,7 +158,8 @@ export const useStudentHomeworkStore = defineStore('studentHomework', {
      */
     async getStudentProgress(homeworkId) {
       try {
-        const response = await homeworkApi.getStudentProgress(homeworkId)
+        // 使用当前学生进度接口
+        const response = await homeworkApi.getMyProgress(homeworkId)
         if (response.success) {
           return response.data
         } else {

@@ -4,17 +4,31 @@
 import os
 import uuid
 import mimetypes
+import json
+import base64
+import io
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import asyncio
 
-import fitz  # PDF处理库
-from PIL import Image
+try:
+    import fitz  # PDF处理库
+except ImportError:
+    fitz = None
+    print("PyMuPDF not installed, PDF processing will be limited")
+
+try:
+    from PIL import Image, ImageOps
+    import cv2
+    import numpy as np
+except ImportError:
+    print("PIL/OpenCV not installed, image processing will be limited")
+
 from fastapi import UploadFile, HTTPException
 from loguru import logger
 
 from app.core.config import settings
-from app.core.unified_ai_framework import UnifiedAIFramework
+from app.core.unified_ai_framework import TaskComplexity
 from app.models.pydantic_models import FileProcessingStatus
 
 
@@ -22,14 +36,22 @@ class FileProcessorService:
     """文件处理服务"""
     
     def __init__(self):
-        self.ai_framework = UnifiedAIFramework()
-        self.upload_dir = Path(settings.file_upload.upload_dir)
+        # 使用全局统一AI框架实例 - 延迟导入避免循环依赖
+        from app.core.unified_ai_framework import unified_ai
+        self.ai_framework = unified_ai
+        
+        # 设置上传目录
+        upload_path = getattr(settings, 'file_upload', {}).get('upload_dir', 'uploads')
+        self.upload_dir = Path(upload_path)
         self.upload_dir.mkdir(exist_ok=True)
         
         # 支持的文件类型
         self.image_extensions = {'.jpg', '.jpeg', '.png', '.webp'}
         self.document_extensions = {'.pdf', '.txt'}
         self.all_extensions = self.image_extensions | self.document_extensions
+        
+        # 文件大小限制
+        self.max_file_size = 50 * 1024 * 1024  # 50MB
         
     async def process_upload(self, file: UploadFile, user_id: str) -> Dict[str, Any]:
         """处理文件上传"""
@@ -59,10 +81,10 @@ class FileProcessorService:
     def _validate_file(self, file: UploadFile) -> Dict[str, Any]:
         """验证上传文件"""
         # 检查文件大小
-        if hasattr(file, 'size') and file.size > settings.file_upload.max_size_bytes:
+        if hasattr(file, 'size') and file.size and file.size > self.max_file_size:
             return {
                 "valid": False,
-                "error": f"文件大小超过限制 ({settings.file_upload.max_size_mb}MB)"
+                "error": f"文件大小超过限制 ({self.max_file_size // 1024 // 1024}MB)"
             }
         
         # 检查文件类型
@@ -369,3 +391,7 @@ class FileProcessorService:
             "extension": path.suffix.lower(),
             "name": path.name
         }
+
+
+# 全局文件处理服务实例
+file_processor_service = FileProcessorService()

@@ -6,8 +6,17 @@ from typing import Optional, List
 from uuid import uuid4
 
 from sqlalchemy import (
-    Column, String, DateTime, JSON, Text, Boolean, Integer, 
-    ForeignKey, Float, func
+    Column,
+    String,
+    DateTime,
+    JSON,
+    Text,
+    Boolean,
+    Integer,
+    ForeignKey,
+    Float,
+    func,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship, Mapped
 
@@ -19,33 +28,221 @@ def generate_uuid() -> str:
     return str(uuid4())
 
 
+class TutorSession(Base):
+    """智能教学会话表"""
+    __tablename__ = "tutor_sessions"
+
+    id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = Column(String(36), nullable=False)
+    subject: Mapped[str] = Column(String(50), nullable=False)
+    topic: Mapped[str] = Column(String(100), nullable=False)
+    difficulty: Mapped[str] = Column(String(20), default="intermediate")
+
+    # 学习目标和关键概念
+    learning_objectives: Mapped[Optional[List]] = Column(JSON)
+    key_concepts: Mapped[Optional[List]] = Column(JSON)
+
+    # 教学状态
+    current_phase: Mapped[str] = Column(String(30), default="initial_assessment")
+    understanding_level: Mapped[float] = Column(Float, default=0.5)
+    teaching_strategy: Mapped[str] = Column(String(20), default="socratic")
+
+    # 会话统计
+    total_questions: Mapped[int] = Column(Integer, default=0)
+    correct_answers: Mapped[int] = Column(Integer, default=0)
+    session_duration: Mapped[Optional[int]] = Column(Integer)  # 秒
+
+    # 会话状态
+    is_active: Mapped[bool] = Column(Boolean, default=True)
+    completed_at: Mapped[Optional[datetime]] = Column(DateTime)
+
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now())
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # 关联关系
+    messages = relationship("TutorMessage", back_populates="session", cascade="all, delete-orphan")
+
+
+class TutorMessage(Base):
+    """教学对话消息表"""
+    __tablename__ = "tutor_messages"
+
+    id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
+    session_id: Mapped[str] = Column(String(36), ForeignKey("tutor_sessions.id"), nullable=False)
+
+    # 消息内容
+    role: Mapped[str] = Column(String(20), nullable=False)  # user/assistant
+    content: Mapped[str] = Column(Text, nullable=False)
+
+    # 消息元数据
+    message_type: Mapped[Optional[str]] = Column(String(30))  # question/hint/explanation/encouragement
+    teaching_phase: Mapped[Optional[str]] = Column(String(30))
+    understanding_level: Mapped[Optional[float]] = Column(Float)
+
+    # 学生回答分析
+    response_type: Mapped[Optional[str]] = Column(String(20))  # correct/partial/incorrect/confused
+    confusion_points: Mapped[Optional[List]] = Column(JSON)
+
+    # 时间戳
+    timestamp: Mapped[datetime] = Column(DateTime, default=func.now())
+
+    # 关联关系
+    session = relationship("TutorSession", back_populates="messages")
+
+
+class StudentProgress(Base):
+    """学生学习进度表"""
+    __tablename__ = "student_progress"
+
+    id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = Column(String(36), nullable=False)
+    subject: Mapped[str] = Column(String(50), nullable=False)
+    topic: Mapped[str] = Column(String(100), nullable=False)
+
+    # 进度统计
+    total_sessions: Mapped[int] = Column(Integer, default=0)
+    completed_sessions: Mapped[int] = Column(Integer, default=0)
+    average_understanding: Mapped[float] = Column(Float, default=0.0)
+
+    # 学习表现
+    strengths: Mapped[Optional[List]] = Column(JSON)  # 优势知识点
+    weaknesses: Mapped[Optional[List]] = Column(JSON)  # 薄弱环节
+    confusion_history: Mapped[Optional[List]] = Column(JSON)  # 历史困惑点
+
+    # 学习偏好
+    preferred_teaching_style: Mapped[Optional[str]] = Column(String(20))
+    response_pattern: Mapped[Optional[str]] = Column(String(20))  # fast/slow/careful
+
+    # 时间信息
+    first_learned: Mapped[datetime] = Column(DateTime, default=func.now())
+    last_studied: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now())
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # 唯一约束
+    __table_args__ = (UniqueConstraint('user_id', 'subject', 'topic', name='unique_user_subject_topic'),)
+
+
+class Grade(Base):
+    """年级表"""
+    __tablename__ = "edu_grades"
+
+    id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
+    name: Mapped[str] = Column(String(50), nullable=False)
+    level: Mapped[Optional[int]] = Column(Integer)
+
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now())
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class Subject(Base):
+    """学科表"""
+    __tablename__ = "edu_subjects"
+
+    id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
+    name: Mapped[str] = Column(String(50), nullable=False)
+    code: Mapped[Optional[str]] = Column(String(30))
+
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now())
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class Chapter(Base):
+    """章节（按年级+学科建立树状层级）"""
+    __tablename__ = "edu_chapters"
+
+    id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
+    name: Mapped[str] = Column(String(100), nullable=False)
+
+    grade_id: Mapped[str] = Column(String(36), ForeignKey("edu_grades.id"), nullable=False)
+    subject_id: Mapped[str] = Column(String(36), ForeignKey("edu_subjects.id"), nullable=False)
+    parent_id: Mapped[Optional[str]] = Column(String(36), ForeignKey("edu_chapters.id"))
+    sort_order: Mapped[Optional[int]] = Column(Integer)
+
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now())
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    parent = relationship("Chapter", remote_side=[id])
+    grade = relationship("Grade")
+    subject = relationship("Subject")
+
+
+class QuestionChapter(Base):
+    """题目-章节 映射表（题目可属于多个章节）"""
+    __tablename__ = "map_question_chapters"
+
+    question_id: Mapped[str] = Column(String(36), ForeignKey("data_questions.id"), primary_key=True)
+    chapter_id: Mapped[str] = Column(String(36), ForeignKey("edu_chapters.id"), primary_key=True)
+
+
+class Teaching(Base):
+    """教师授课关系：哪个老师在某班教哪门学科"""
+    __tablename__ = "edu_teaching"
+
+    id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
+    teacher_id: Mapped[str] = Column(String(36), ForeignKey("config_users.user_id"), nullable=False)
+    class_id: Mapped[str] = Column(String(36), ForeignKey("data_classes.id"), nullable=False)
+    subject_id: Mapped[str] = Column(String(36), ForeignKey("edu_subjects.id"), nullable=False)
+    term: Mapped[Optional[str]] = Column(String(50))
+
+    # 授课状态
+    is_active: Mapped[bool] = Column(Boolean, default=True)
+
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now())
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # 移除原有的唯一约束，改为允许多个老师教同一班级同一科目，但同一老师不能重复授课同一班级同一科目
+    __table_args__ = (
+        UniqueConstraint("teacher_id", "class_id", "subject_id", "term", name="uq_teaching_unique"),
+    )
+
+    # 关系
+    subject = relationship("Subject")
+    class_obj = relationship("Class", back_populates="teachings")
+    teacher = relationship("ConfigUser")
+
+
 class Class(Base):
     """班级表"""
     __tablename__ = "data_classes"
-    
+
     id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
     name: Mapped[str] = Column(String(100), nullable=False)
     description: Mapped[Optional[str]] = Column(Text)
-    
+
     # 班级属性
-    grade_level: Mapped[Optional[str]] = Column(String(20))  # 年级
-    subject: Mapped[Optional[str]] = Column(String(50))      # 学科
-    
+    grade_id: Mapped[Optional[str]] = Column(String(36), ForeignKey("edu_grades.id"))  # 关联年级表
+
     # 关联
-    teacher_id: Mapped[str] = Column(String(36), ForeignKey("config_users.user_id"))
-    organization_id: Mapped[str] = Column(String(36), ForeignKey("config_organizations.organization_id"))
-    
+    organization_id: Mapped[Optional[str]] = Column(String(36), ForeignKey("config_organizations.organization_id"))
+
     # 班级设置
     max_students: Mapped[int] = Column(Integer, default=50)
     is_active: Mapped[bool] = Column(Boolean, default=True)
-    
-    created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_at: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
-    
+
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+
     # 关系
-    teacher = relationship("ConfigUser", foreign_keys=[teacher_id])
+    grade = relationship("Grade")
     organization = relationship("ConfigOrganization", back_populates="classes")
     homeworks = relationship("Homework", back_populates="class_obj")
+    teachings = relationship("Teaching", back_populates="class_obj")
+    # 学生关系
+    # 注意：不建立复杂的反向关系以避免循环导入，仅提供简化映射表
+
+
+class ClassStudent(Base):
+    """班级-学生关联表"""
+    __tablename__ = "data_class_students"
+
+    id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
+    class_id: Mapped[str] = Column(String(36), ForeignKey("data_classes.id"))
+    student_id: Mapped[str] = Column(String(36), ForeignKey("config_users.user_id"))
+
+    joined_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="加入时间")
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
 
 
 class Question(Base):
@@ -65,6 +262,9 @@ class Question(Base):
     question_type: Mapped[Optional[str]] = Column(String(50)) # 题目类型
     difficulty: Mapped[Optional[str]] = Column(String(20))   # 难度等级
     grade_level: Mapped[Optional[str]] = Column(String(20))  # 适用年级
+    # 新增：规范化外键（保留旧字段以便迁移期可读写）
+    subject_id: Mapped[Optional[str]] = Column(String(36), ForeignKey("edu_subjects.id"))
+    grade_id: Mapped[Optional[str]] = Column(String(36), ForeignKey("edu_grades.id"))
     
     # 知识点标签
     knowledge_points: Mapped[Optional[List]] = Column(JSON, default=list)
@@ -87,10 +287,10 @@ class Question(Base):
     is_active: Mapped[bool] = Column(Boolean, default=True)
     
     # 统一时间字段命名
-    created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_at: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
     
-    # 关系
+    # 关系 - 暂时注释掉避免循环导入
     creator = relationship("ConfigUser", back_populates="created_questions")
 
 
@@ -127,43 +327,47 @@ class PromptTemplate(Base):
     is_builtin: Mapped[bool] = Column(Boolean, default=False)  # 内置模板
     
     # 统一时间字段命名
-    created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_at: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
 
 
 class Homework(Base):
     """作业表"""
     __tablename__ = "data_homeworks"
-    
+
     id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
     title: Mapped[str] = Column(String(200), nullable=False)
     description: Mapped[Optional[str]] = Column(Text)
     instructions: Mapped[Optional[str]] = Column(Text)  # 作业说明
-    
+
     # 关联
-    teacher_id: Mapped[str] = Column(String(36), ForeignKey("config_users.user_id"))
+    creator_teacher_id: Mapped[str] = Column(String(36), ForeignKey("config_users.user_id"))  # 创建作业的老师
     class_id: Mapped[str] = Column(String(36), ForeignKey("data_classes.id"))
-    
+    subject_id: Mapped[Optional[str]] = Column(String(36), ForeignKey("edu_subjects.id"))
+    grade_id: Mapped[Optional[str]] = Column(String(36), ForeignKey("edu_grades.id"))
+
     # 题目列表
     question_ids: Mapped[List] = Column(JSON, default=list)  # 包含的题目ID列表
-    
+
     # 时间管理
     due_at: Mapped[Optional[datetime]] = Column(DateTime, comment="截止时间")
     started_at: Mapped[Optional[datetime]] = Column(DateTime, default=func.now(), comment="开始时间")
-    
+
     # 作业设置
     is_published: Mapped[bool] = Column(Boolean, default=False)
     allow_late_submission: Mapped[bool] = Column(Boolean, default=True)
     max_attempts: Mapped[int] = Column(Integer, default=1)  # 最大尝试次数
-    
+
     # 统一时间字段命名
-    created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_at: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
-    
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+
     # 关系
-    teacher = relationship("ConfigUser", foreign_keys=[teacher_id])
+    creator_teacher = relationship("ConfigUser", foreign_keys=[creator_teacher_id])
     class_obj = relationship("Class", back_populates="homeworks")
     student_homeworks = relationship("StudentHomework", back_populates="homework")
+    subject = relationship("Subject")
+    grade = relationship("Grade")
 
 
 class StudentHomework(Base):
@@ -188,8 +392,8 @@ class StudentHomework(Base):
     started_at: Mapped[Optional[datetime]] = Column(DateTime, comment="开始时间")
     completed_at: Mapped[Optional[datetime]] = Column(DateTime, comment="完成时间")
     submitted_at: Mapped[Optional[datetime]] = Column(DateTime, comment="提交时间")
-    created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_at: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
     
     # 关系
     homework = relationship("Homework", back_populates="student_homeworks")
@@ -223,8 +427,8 @@ class ChatSession(Base):
     started_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="开始时间")
     last_interaction_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="最后交互时间")
     ended_at: Mapped[Optional[datetime]] = Column(DateTime, comment="结束时间")
-    created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_at: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
     
     # 关系
     student = relationship("ConfigUser", back_populates="chat_sessions")
@@ -290,33 +494,85 @@ class FileUpload(Base):
     is_public: Mapped[bool] = Column(Boolean, default=False)
     
     # 统一时间字段命名
-    created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_at: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
     processed_at: Mapped[Optional[datetime]] = Column(DateTime, comment="处理时间")
     
     # 关系
     uploader = relationship("ConfigUser", back_populates="file_uploads")
 
 
+class Note(Base):
+    """学生笔记表"""
+    __tablename__ = "data_notes"
+
+    id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
+
+    # 笔记基本信息
+    title: Mapped[str] = Column(String(200), nullable=False, comment="笔记标题")
+    content: Mapped[str] = Column(Text, nullable=False, comment="笔记内容")
+    summary: Mapped[Optional[str]] = Column(Text, comment="笔记摘要")
+
+    # 笔记分类
+    category: Mapped[str] = Column(String(50), default="general", comment="笔记分类")  # general/question/chat/homework
+    tags: Mapped[List] = Column(JSON, default=list, comment="标签")
+
+    # 关联信息（冗余存储以防数据丢失）
+    question_id: Mapped[Optional[str]] = Column(String(36), comment="关联题目ID")
+    question_title: Mapped[Optional[str]] = Column(String(200), comment="题目标题快照")
+    question_content: Mapped[Optional[str]] = Column(Text, comment="题目内容快照")
+
+    chat_session_id: Mapped[Optional[str]] = Column(String(36), comment="关联对话会话ID")
+    chat_messages: Mapped[Optional[List]] = Column(JSON, default=list, comment="AI对话内容快照")
+
+    homework_id: Mapped[Optional[str]] = Column(String(36), comment="关联作业ID")
+    homework_title: Mapped[Optional[str]] = Column(String(200), comment="作业标题快照")
+
+    # 学习相关
+    subject: Mapped[Optional[str]] = Column(String(50), comment="学科")
+    knowledge_points: Mapped[List] = Column(JSON, default=list, comment="知识点")
+    difficulty_level: Mapped[Optional[str]] = Column(String(20), comment="难度等级")
+
+    # 个人学习状态
+    mastery_level: Mapped[int] = Column(Integer, default=1, comment="掌握程度 1-5")
+    review_count: Mapped[int] = Column(Integer, default=0, comment="复习次数")
+    last_reviewed_at: Mapped[Optional[datetime]] = Column(DateTime, comment="最后复习时间")
+
+    # 笔记状态
+    is_starred: Mapped[bool] = Column(Boolean, default=False, comment="是否收藏")
+    is_public: Mapped[bool] = Column(Boolean, default=False, comment="是否公开")
+    is_archived: Mapped[bool] = Column(Boolean, default=False, comment="是否归档")
+
+    # 创建者
+    student_id: Mapped[str] = Column(String(36), ForeignKey("config_users.user_id"), nullable=False)
+
+    # 统一时间字段命名
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+
+    # 关系
+    student = relationship("ConfigUser", back_populates="notes")
+
+
 class SystemLog(Base):
     """系统日志表"""
     __tablename__ = "log_system"
-    
+
     id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
-    
+
     # 日志信息
     level: Mapped[str] = Column(String(10), nullable=False)  # DEBUG/INFO/WARNING/ERROR
     message: Mapped[str] = Column(Text, nullable=False)
     category: Mapped[str] = Column(String(50), default="general")  # AI/AUTH/DB/FILE等
-    
+
     # 关联信息
     user_id: Mapped[Optional[str]] = Column(String(36))
     session_id: Mapped[Optional[str]] = Column(String(36))
     request_id: Mapped[Optional[str]] = Column(String(36))
-    
+
     # 详细信息
     details: Mapped[dict] = Column(JSON, default=dict)
     stack_trace: Mapped[Optional[str]] = Column(Text)
-    
+
     # 统一时间字段命名
     created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")

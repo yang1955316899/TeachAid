@@ -26,7 +26,7 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     // 基础状态
     isLoggedIn: (state) => !!state.token && state.isAuthenticated,
-    userRole: (state) => state.user?.user_role || state.user?.role || 'guest',
+    userRole: (state) => state.user?.user_role || state.user?.role || (state.isLoggedIn ? 'guest' : null),
     userId: (state) => state.user?.user_id || state.user?.id,
     userName: (state) => state.user?.user_name || state.user?.username,
     userFullName: (state) => state.user?.user_full_name || state.user?.full_name,
@@ -150,7 +150,7 @@ export const useAuthStore = defineStore('auth', {
     /**
      * 刷新访问令牌
      */
-    async refreshToken() {
+    async refreshAccessToken() {
       if (this.isRefreshing || !this.refreshToken) {
         return false
       }
@@ -160,7 +160,7 @@ export const useAuthStore = defineStore('auth', {
       try {
         const response = await authApi.refreshToken(this.refreshToken)
         
-        if (response.success && response.data.access_token) {
+        if (response && response.success && response.data && response.data.access_token) {
           this.token = response.data.access_token
           this.tokenExpiry = new Date(Date.now() + response.data.expires_in * 1000)
           
@@ -194,7 +194,7 @@ export const useAuthStore = defineStore('auth', {
         console.error('令牌验证失败:', error)
         
         // 尝试刷新令牌
-        if (await this.refreshToken()) {
+        if (await this.refreshAccessToken()) {
           return true
         }
         
@@ -209,13 +209,14 @@ export const useAuthStore = defineStore('auth', {
     async fetchUserProfile() {
       try {
         const response = await authApi.getProfile()
-        this.user = response.data
+        // getProfile 返回的就是用户对象（非 BaseResponse 包裹）
+        this.user = response
         this.isAuthenticated = true
         
         // 更新本地存储
-        localStorage.setItem('user', JSON.stringify(response.data))
+        localStorage.setItem('user', JSON.stringify(response))
         
-        return response.data
+        return response
       } catch (error) {
         console.error('获取用户信息失败:', error)
         throw error
@@ -228,7 +229,10 @@ export const useAuthStore = defineStore('auth', {
     async fetchUserPermissions() {
       try {
         const response = await authApi.getPermissions()
-        this.permissions = response.data || []
+        // getPermissions 返回 BaseResponse，权限在 data.permissions 中
+        this.permissions = (response && response.data && Array.isArray(response.data.permissions))
+          ? response.data.permissions
+          : []
         return this.permissions
       } catch (error) {
         console.error('获取用户权限失败:', error)
@@ -243,7 +247,8 @@ export const useAuthStore = defineStore('auth', {
     async checkAuthStatus() {
       try {
         const response = await authApi.checkAuth()
-        return response.authenticated
+        // checkAuth 返回 BaseResponse，认证标志在 data.authenticated
+        return !!(response && response.data && response.data.authenticated)
       } catch (error) {
         return false
       }

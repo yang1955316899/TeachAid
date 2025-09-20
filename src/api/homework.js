@@ -22,7 +22,10 @@ export const homeworkApi = {
    * 创建作业
    */
   createHomework(data) {
-    return http.post('/homework', data)
+    const payload = { ...data }
+    if (payload.subjectId && !payload.subject_id) payload.subject_id = payload.subjectId
+    if (payload.classId && !payload.class_id) payload.class_id = payload.classId
+    return http.post('/homework', payload)
   },
 
   /**

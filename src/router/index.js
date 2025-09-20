@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { setupRouterGuards } from './guards'
+import { setupAdminRoutes } from './routes_admin'
 
 const routes = [
   {
@@ -45,6 +46,12 @@ const routes = [
         name: 'ClassManage',
         component: () => import('@/views/teacher/class/index.vue'),
         meta: { title: '班级管理' }
+      },
+      {
+        path: 'teaching',
+        name: 'TeachingManage',
+        component: () => import('@/views/teacher/teaching/index.vue'),
+        meta: { title: '授课关系管理' }
       },
       {
         path: 'prompt',
@@ -117,5 +124,8 @@ const router = createRouter({
 
 // 设置路由守卫
 setupRouterGuards(router)
+
+// 动态注册管理员路由
+setupAdminRoutes(router)
 
 export default router

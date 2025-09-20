@@ -88,11 +88,12 @@
             name="username"
             :rules="[{ required: true, message: '请输入用户名!' }]"
           >
-            <a-input 
-              v-model:value="form.username" 
+            <a-input
+              v-model:value="form.username"
               placeholder="请输入用户名"
               size="large"
               class="form-input"
+              autocomplete="username"
             >
               <template #prefix>
                 <UserOutlined style="color: rgba(0,0,0,.25)" />
@@ -104,11 +105,12 @@
             name="password"
             :rules="[{ required: true, message: '请输入密码!' }]"
           >
-            <a-input-password 
-              v-model:value="form.password" 
+            <a-input-password
+              v-model:value="form.password"
               placeholder="请输入密码"
               size="large"
               class="form-input"
+              autocomplete="current-password"
             >
               <template #prefix>
                 <LockOutlined style="color: rgba(0,0,0,.25)" />
@@ -583,6 +585,8 @@ export default {
   height: 50px;
   min-width: 450px;
   max-width: 600px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
 .typewriter-text {
@@ -819,14 +823,164 @@ export default {
 @media (max-width: 768px) {
   .login-container {
     flex-direction: column;
+    height: 100vh;
+    min-height: 100vh;
   }
-  
-  .content-left {
+
+  /* 隐藏背景动画元素 */
+  .particle-background,
+  .grid-background,
+  .floating-geometry {
     display: none;
   }
-  
+
+  .content-left {
+    flex: none;
+    height: auto;
+    min-height: 200px;
+    padding: 30px 20px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+  }
+
   .content-right {
+    flex: 1;
     width: 100%;
+    padding: 30px 20px;
+    min-height: calc(100vh - 200px);
+  }
+
+  /* 简化左侧内容 */
+  .brand-section {
+    max-width: 100%;
+    text-align: center;
+  }
+
+  .logo-container {
+    justify-content: center;
+    margin-bottom: 20px;
+    gap: 15px;
+  }
+
+  .logo-icon {
+    width: 36px;
+    height: 36px;
+    margin-top: 0;
+  }
+
+  .cube-face {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
+
+  .cube-face.front {
+    transform: rotateY(0deg) translateZ(18px);
+  }
+
+  .cube-face.back {
+    transform: rotateY(180deg) translateZ(18px);
+  }
+
+  .cube-face.right {
+    transform: rotateY(90deg) translateZ(18px);
+  }
+
+  .cube-face.left {
+    transform: rotateY(-90deg) translateZ(18px);
+  }
+
+  .cube-face.top {
+    transform: rotateX(90deg) translateZ(18px);
+  }
+
+  .cube-face.bottom {
+    transform: rotateX(-90deg) translateZ(18px);
+  }
+
+  .brand-title {
+    align-items: center;
+    gap: 8px;
+  }
+
+  .main-title {
+    font-size: 36px;
+  }
+
+  .typewriter-container {
+    min-width: auto;
+    max-width: 100%;
+    height: auto;
+    justify-content: center;
+  }
+
+  .typewriter-text {
+    font-size: 16px;
+    text-align: center;
+  }
+
+  .cursor {
+    font-size: 16px;
+  }
+
+  .brand-subtitle {
+    font-size: 14px;
+    margin-bottom: 20px;
+  }
+
+  /* 隐藏统计数据和技术标签以节省空间 */
+  .stats-list,
+  .tech-tags {
+    display: none;
+  }
+
+  /* 登录表单优化 */
+  .login-form {
+    max-width: 100%;
+  }
+
+  .form-header {
+    margin-bottom: 30px;
+  }
+
+  .form-header h2 {
+    font-size: 24px;
+  }
+
+  .form-header p {
+    font-size: 14px;
+  }
+}
+
+/* 更小屏幕优化 */
+@media (max-width: 480px) {
+  .content-left {
+    min-height: 150px;
+    padding: 20px 15px;
+  }
+
+  .content-right {
+    padding: 20px 15px;
+    min-height: calc(100vh - 150px);
+  }
+
+  .main-title {
+    font-size: 28px;
+  }
+
+  .typewriter-text {
+    font-size: 14px;
+  }
+
+  .cursor {
+    font-size: 14px;
+  }
+
+  .brand-subtitle {
+    font-size: 12px;
+  }
+
+  .form-header h2 {
+    font-size: 20px;
   }
 }
 </style>

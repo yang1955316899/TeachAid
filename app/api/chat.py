@@ -3,6 +3,8 @@
 """
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
+import json as _json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from loguru import logger
@@ -88,6 +90,75 @@ async def start_chat_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="创建对话会话失败"
         )
+
+
+@router.post("/{session_id}/stream", summary="SSE流式对话")
+async def stream_chat(
+    session_id: str,
+    message: ChatMessageCreate,
+    current_user: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    SSE流式响应：逐步返回AI回复片段。
+    """
+    # 简化：使用本模块的占位AI回复生成器，按词片段流式发送
+    # 验证会话归属
+    result = await db.execute(
+        select(ChatSession).where(
+            ChatSession.id == session_id,
+            ChatSession.student_id == current_user.id
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="对话会话不存在")
+
+    async def event_generator():
+        # 先保存用户消息
+        user_msg = ChatMessage(
+            id=str(uuid.uuid4()),
+            session_id=session_id,
+            role="user",
+            content=message.content,
+            selected_text=message.selected_text,
+            created_at=datetime.utcnow()
+        )
+        db.add(user_msg)
+        await db.commit()
+
+        reply = _generate_ai_reply(message.content, message.selected_text)
+        words = reply.split()
+        buffer = []
+        for i, w in enumerate(words, 1):
+            buffer.append(w)
+            # 每5个词发送一块
+            if i % 5 == 0:
+                chunk = " ".join(buffer)
+                yield f"data: {{\"content\": {_json.dumps(chunk)} }}\n\n"
+                buffer.clear()
+                # 轻微延迟以模拟生成
+                import asyncio
+                await asyncio.sleep(0.05)
+        if buffer:
+            chunk = " ".join(buffer)
+            yield f"data: {{\"content\": {_json.dumps(chunk)} }}\n\n"
+
+        # 保存AI完整消息
+        ai_msg = ChatMessage(
+            id=str(uuid.uuid4()),
+            session_id=session_id,
+            role="assistant",
+            content=reply,
+            created_at=datetime.utcnow()
+        )
+        db.add(ai_msg)
+        session.message_count = (session.message_count or 0) + 2
+        session.last_interaction_at = datetime.utcnow()
+        await db.commit()
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.post("/{session_id}/messages", response_model=BaseResponse, summary="发送消息")

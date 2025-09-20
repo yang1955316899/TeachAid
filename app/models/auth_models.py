@@ -86,20 +86,21 @@ class ConfigUser(Base):
     user_login_count: Mapped[int] = Column(Integer, default=0, comment="总登录次数")
     user_last_activity: Mapped[Optional[datetime]] = Column(DateTime, comment="最后活跃时间")
     
-    # 统一时间字段命名
-    created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_at: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
-    deleted_at: Mapped[Optional[datetime]] = Column(DateTime, comment="软删除时间")
+    # 时间字段 - 保持与API兼容
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+    deleted_time: Mapped[Optional[datetime]] = Column(DateTime, comment="软删除时间")
     
     # 关系
     organization = relationship("ConfigOrganization", back_populates="users")
     login_logs = relationship("LogLogin", back_populates="user")
-    
-    # 业务关联关系
+
+    # 业务关联关系暂时注释掉，避免循环导入
     created_questions = relationship("Question", back_populates="creator")
     student_homeworks = relationship("StudentHomework", back_populates="student")
     chat_sessions = relationship("ChatSession", back_populates="student")
     file_uploads = relationship("FileUpload", back_populates="uploader")
+    notes = relationship("Note", back_populates="student")
 
 
 class ConfigOrganization(Base):
@@ -107,28 +108,28 @@ class ConfigOrganization(Base):
     __tablename__ = "config_organizations"
     
     organization_id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
-    organization_name: Mapped[str] = Column(String(100), nullable=False, comment="机构名称")
-    organization_code: Mapped[str] = Column(String(20), unique=True, nullable=False, comment="机构代码")
-    organization_description: Mapped[Optional[str]] = Column(Text, comment="机构描述")
+    name: Mapped[str] = Column(String(100), nullable=False, comment="机构名称")
+    code: Mapped[str] = Column(String(20), unique=True, nullable=False, comment="机构代码")
+    description: Mapped[Optional[str]] = Column(Text, comment="机构描述")
     
     # 联系信息
-    organization_contact_person: Mapped[Optional[str]] = Column(String(100), comment="联系人")
-    organization_contact_email: Mapped[Optional[str]] = Column(String(255), comment="联系邮箱")
-    organization_contact_phone: Mapped[Optional[str]] = Column(String(20), comment="联系电话")
-    organization_address: Mapped[Optional[str]] = Column(Text, comment="机构地址")
+    contact_person: Mapped[Optional[str]] = Column(String(100), comment="联系人")
+    contact_email: Mapped[Optional[str]] = Column(String(255), comment="联系邮箱")
+    contact_phone: Mapped[Optional[str]] = Column(String(20), comment="联系电话")
+    address: Mapped[Optional[str]] = Column(Text, comment="机构地址")
     
     # 配置信息
-    organization_settings: Mapped[Optional[dict]] = Column(JSON, comment="机构配置")
-    organization_features: Mapped[Optional[dict]] = Column(JSON, comment="功能开关")
-    organization_limits: Mapped[Optional[dict]] = Column(JSON, comment="使用限制")
+    settings: Mapped[Optional[dict]] = Column(JSON, comment="机构配置")
+    features: Mapped[Optional[dict]] = Column(JSON, comment="功能开关")
+    limits: Mapped[Optional[dict]] = Column(JSON, comment="使用限制")
     
     # 状态
-    organization_is_active: Mapped[bool] = Column(Boolean, default=True, comment="是否激活")
-    organization_license_expires: Mapped[Optional[datetime]] = Column(DateTime, comment="许可证到期时间")
+    is_active: Mapped[bool] = Column(Boolean, default=True, comment="是否激活")
+    license_expires: Mapped[Optional[datetime]] = Column(DateTime, comment="许可证到期时间")
     
-    # 统一时间字段命名
-    created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_at: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+    # 时间字段 - 保持与API兼容
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
     
     # 关系
     users = relationship("ConfigUser", back_populates="organization")
@@ -187,9 +188,9 @@ class ConfigPermission(Base):
     permission_is_system: Mapped[bool] = Column(Boolean, default=False, comment="是否为系统权限")
     permission_is_active: Mapped[bool] = Column(Boolean, default=True, comment="是否激活")
     
-    # 统一时间字段命名
-    created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_at: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+    # 时间字段 - 保持与API兼容
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
 
 
 class ConfigRolePermission(Base):
@@ -227,9 +228,9 @@ class SystemSettings(Base):
     is_encrypted: Mapped[bool] = Column(Boolean, default=False, comment="是否加密存储")
     validation_rule: Mapped[Optional[str]] = Column(Text, comment="验证规则")
     
-    # 统一时间字段命名
-    created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_at: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+    # 时间字段 - 保持与API兼容
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
 
 
 class LogAudit(Base):

@@ -40,6 +40,14 @@ export const authApi = {
   },
 
   /**
+   * 更新用户资料
+   */
+  updateProfile(data) {
+    // 后端 PUT /auth/profile 返回最新用户对象
+    return http.put('/auth/profile', data)
+  },
+
+  /**
    * 修改密码
    */
   changePassword(data) {
@@ -57,6 +65,6 @@ export const authApi = {
    * 检查认证状态
    */
   checkAuth() {
-    return http.get('/auth/check-auth')
+    return http.get('/auth/check')
   }
 }

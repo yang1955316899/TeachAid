@@ -17,10 +17,16 @@
           />
         </a-col>
         <a-col :span="4">
-          <a-select v-model:value="searchParams.grade" placeholder="年级" allow-clear @change="handleSearch">
-            <a-select-option value="高一">高一</a-select-option>
-            <a-select-option value="高二">高二</a-select-option>
-            <a-select-option value="高三">高三</a-select-option>
+          <a-select
+            v-model:value="searchParams.grade"
+            placeholder="年级"
+            allow-clear
+            @change="handleSearch"
+            :loading="gradeLoading"
+          >
+            <a-select-option v-for="grade in gradeOptions" :key="grade.value" :value="grade.value">
+              {{ grade.label }}
+            </a-select-option>
           </a-select>
         </a-col>
         <a-col :span="4">
@@ -50,6 +56,7 @@
           </template>
           <template v-if="column.key === 'action'">
             <a-space>
+              <a-button size="small" @click="manageTeaching(record)">授课管理</a-button>
               <a-button size="small" @click="manageStudents(record)">管理学生</a-button>
               <a-button size="small" @click="viewStatistics(record)">查看统计</a-button>
               <a-button size="small" @click="editClass(record)">编辑</a-button>
@@ -84,10 +91,10 @@
           </a-col>
           <a-col :span="12">
             <a-form-item label="年级" required>
-              <a-select v-model:value="form.grade" placeholder="请选择年级">
-                <a-select-option value="高一">高一</a-select-option>
-                <a-select-option value="高二">高二</a-select-option>
-                <a-select-option value="高三">高三</a-select-option>
+              <a-select v-model:value="form.grade_id" placeholder="请选择年级" :loading="gradeLoading">
+                <a-select-option v-for="grade in gradeOptions" :key="grade.value" :value="grade.value">
+                  {{ grade.label }}
+                </a-select-option>
               </a-select>
             </a-form-item>
           </a-col>
@@ -95,21 +102,9 @@
         
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item label="学科" required>
-              <a-select v-model:value="form.subject" placeholder="请选择学科">
-                <a-select-option value="数学">数学</a-select-option>
-                <a-select-option value="语文">语文</a-select-option>
-                <a-select-option value="英语">英语</a-select-option>
-                <a-select-option value="物理">物理</a-select-option>
-                <a-select-option value="化学">化学</a-select-option>
-                <a-select-option value="生物">生物</a-select-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
             <a-form-item label="班级容量">
               <a-input-number
-                v-model:value="form.capacity"
+                v-model:value="form.max_students"
                 :min="1"
                 :max="100"
                 style="width: 100%"
@@ -256,6 +251,8 @@
 <script>
 import { useClassStore } from '@/stores/class'
 import { storeToRefs } from 'pinia'
+import { eduApi } from '@/api/edu'
+import { message } from 'ant-design-vue'
 
 export default {
   name: 'ClassManage',
@@ -272,9 +269,8 @@ export default {
       statistics: {},
       form: {
         name: '',
-        grade: '',
-        subject: '',
-        capacity: 50,
+        grade_id: '',
+        max_students: 50,
         description: ''
       },
       studentForm: {
@@ -285,6 +281,9 @@ export default {
         keyword: '',
         grade: ''
       },
+      // 动态选项
+      gradeOptions: [],
+      gradeLoading: false,
       columns: [
         {
           title: '班级名称',
@@ -293,13 +292,18 @@ export default {
         },
         {
           title: '年级',
-          dataIndex: 'grade',
-          key: 'grade'
+          dataIndex: 'grade_name',
+          key: 'grade_name'
         },
         {
-          title: '学科',
-          dataIndex: 'subject',
-          key: 'subject'
+          title: '授课教师',
+          key: 'teachers',
+          customRender: ({ record }) => {
+            if (!record.teachers || record.teachers.length === 0) {
+              return '暂无授课教师'
+            }
+            return record.teachers.map(t => `${t.teacher_name}(${t.subject_name || '未知学科'})`).join(', ')
+          }
         },
         {
           title: '学生人数',
@@ -361,6 +365,7 @@ export default {
   },
   mounted() {
     this.loadClasses()
+    this.loadGrades()
   },
   methods: {
     async loadClasses() {
@@ -372,6 +377,24 @@ export default {
         })
       } catch (error) {
         console.error('加载班级失败:', error)
+      }
+    },
+
+    async loadGrades() {
+      this.gradeLoading = true
+      try {
+        const response = await eduApi.getGrades()
+        if (response.success) {
+          this.gradeOptions = (response.data.items || []).map(item => ({
+            label: item.name,
+            value: item.id
+          }))
+        }
+      } catch (error) {
+        console.error('加载年级列表失败:', error)
+        message.error('加载年级列表失败')
+      } finally {
+        this.gradeLoading = false
       }
     },
 
@@ -395,7 +418,7 @@ export default {
     },
 
     async handleCreate() {
-      if (!this.form.name || !this.form.grade || !this.form.subject) {
+      if (!this.form.name || !this.form.grade_id) {
         this.$message.warning('请填写必填字段')
         return
       }
@@ -409,8 +432,10 @@ export default {
         this.showCreateModal = false
         this.resetForm()
         await this.loadClasses()
+        this.$message.success('班级保存成功')
       } catch (error) {
         console.error('保存班级失败:', error)
+        this.$message.error('保存班级失败')
       }
     },
 
@@ -418,9 +443,8 @@ export default {
       this.editingClass = record
       this.form = {
         name: record.name,
-        grade: record.grade,
-        subject: record.subject,
-        capacity: record.capacity,
+        grade_id: record.grade_id,
+        max_students: record.max_students || 50,
         description: record.description || ''
       }
       this.showCreateModal = true
@@ -482,29 +506,44 @@ export default {
     viewStatistics(record) {
       this.currentClass = record
       this.showStatisticsModal = true
-      // 模拟统计数据，实际应该从API获取
-      this.statistics = {
-        totalStudents: record.student_count,
-        totalHomeworks: 12,
-        averageCompletionRate: 78,
-        highCompletionRate: 65,
-        mediumCompletionRate: 25,
-        lowCompletionRate: 10,
-        activeStudents: 38,
-        inactiveStudents: 7,
-        averageLoginCount: 15
-      }
+      // 调用后端统计API
+      import('@/api/analytics').then(async ({ analyticsApi }) => {
+        try {
+          const res = await analyticsApi.getClassOverview(record.id)
+          if (res.success) {
+            this.statistics = res.data || {}
+          } else {
+            this.$message.error('获取班级统计失败')
+          }
+        } catch (e) {
+          console.error('获取班级统计失败:', e)
+          this.$message.error('获取班级统计失败')
+        }
+      })
     },
 
     resetForm() {
       this.form = {
         name: '',
-        grade: '',
-        subject: '',
-        capacity: 50,
+        grade_id: '',
+        max_students: 50,
         description: ''
       }
       this.editingClass = null
+    },
+
+    // 新增授课管理方法
+    async manageTeaching(record) {
+      try {
+        // 跳转到授课关系管理页面，并传递班级ID作为筛选条件
+        this.$router.push({
+          path: '/teacher/teaching',
+          query: { classId: record.id, className: record.name }
+        })
+      } catch (error) {
+        console.error('跳转授课管理失败:', error)
+        this.$message.error('无法打开授课管理页面')
+      }
     }
   }
 }

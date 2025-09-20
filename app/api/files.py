@@ -57,7 +57,7 @@ async def list_file_uploads(
         conditions = []
         
         # 权限过滤
-        if current_user.user_role != "admin":
+        if current_user.user_role.value != "admin":
             conditions.append(FileUpload.uploader_id == current_user.user_id)
         
         # 添加筛选条件
@@ -85,7 +85,7 @@ async def list_file_uploads(
         query = select(FileUpload)
         if conditions:
             query = query.where(and_(*conditions))
-        query = query.order_by(FileUpload.created_at.desc()).offset(offset).limit(pagination.size)
+        query = query.order_by(FileUpload.created_time.desc()).offset(offset).limit(pagination.size)
         
         result = await db.execute(query)
         files = result.scalars().all()
@@ -131,7 +131,7 @@ async def get_file_upload(
             )
         
         # 权限检查
-        if (current_user.user_role != "admin" and file_obj.uploader_id != current_user.user_id):
+        if (current_user.user_role.value != "admin" and file_obj.uploader_id != current_user.user_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无权访问此文件"
@@ -140,7 +140,7 @@ async def get_file_upload(
         return BaseResponse(
             success=True,
             message="获取文件记录详情成功",
-            data=FileUploadResponse.from_orm(file_obj).__dict__
+            data=FileUploadResponse.from_orm(file_obj).dict()
         )
         
     except HTTPException:
@@ -234,7 +234,7 @@ async def upload_file(
         return BaseResponse(
             success=True,
             message="文件上传成功",
-            data=FileUploadResponse.from_orm(file_record).__dict__
+            data=FileUploadResponse.from_orm(file_record).dict()
         )
         
     except HTTPException:
@@ -271,7 +271,7 @@ async def download_file(
         
         # 权限检查
         if (not file_obj.is_public and 
-            current_user.user_role != "admin" and 
+            current_user.user_role.value != "admin" and 
             file_obj.uploader_id != current_user.user_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -325,7 +325,7 @@ async def delete_file(
             )
         
         # 权限检查
-        if (current_user.user_role != "admin" and file_obj.uploader_id != current_user.user_id):
+        if (current_user.user_role.value != "admin" and file_obj.uploader_id != current_user.user_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无权删除此文件"
@@ -383,7 +383,7 @@ async def update_file_public_status(
             )
         
         # 权限检查
-        if (current_user.user_role != "admin" and file_obj.uploader_id != current_user.user_id):
+        if (current_user.user_role.value != "admin" and file_obj.uploader_id != current_user.user_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无权修改此文件"

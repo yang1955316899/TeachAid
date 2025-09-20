@@ -1,7 +1,113 @@
 <template>
   <div class="study-container">
-    <!-- 顶部进度条和控制 -->
-    <div class="study-header">
+    <!-- 学习选择区域 -->
+    <div class="study-selector">
+      <div class="selector-header">
+        <h2><BookOutlined /> 智能学习</h2>
+        <div class="selector-actions">
+          <a-button @click="refreshData" :loading="loadingData">
+            <ReloadOutlined /> 刷新
+          </a-button>
+        </div>
+      </div>
+
+      <div class="selector-content">
+        <div class="selector-row">
+          <div class="selector-item">
+            <label>学习模式</label>
+            <a-radio-group v-model:value="studyMode" @change="onStudyModeChange">
+              <a-radio-button value="free">自由学习</a-radio-button>
+              <a-radio-button value="homework">作业练习</a-radio-button>
+            </a-radio-group>
+          </div>
+        </div>
+
+        <div class="selector-row">
+          <div class="selector-item">
+            <label>学科</label>
+            <a-select
+              v-model:value="selectedSubject"
+              placeholder="选择学科"
+              style="width: 200px"
+              :loading="taxonomyStore.loading"
+              @change="onSubjectChange"
+              allowClear
+            >
+              <a-select-option
+                v-for="subject in taxonomyStore.subjectOptions"
+                :key="subject.value"
+                :value="subject.value"
+              >
+                {{ subject.label }}
+              </a-select-option>
+            </a-select>
+          </div>
+
+          <div class="selector-item" v-if="studyMode === 'homework'">
+            <label>作业</label>
+            <a-select
+              v-model:value="selectedHomework"
+              placeholder="选择作业"
+              style="width: 300px"
+              :loading="homeworkStore.loading"
+              @change="onHomeworkChange"
+              allowClear
+            >
+              <a-select-option
+                v-for="homework in homeworkStore.homeworkOptions"
+                :key="homework.value"
+                :value="homework.value"
+              >
+                <div class="homework-option">
+                  <span class="homework-title">{{ homework.label }}</span>
+                  <a-tag :color="getStatusColor(homework.status)" size="small">
+                    {{ getStatusText(homework.status) }}
+                  </a-tag>
+                </div>
+              </a-select-option>
+            </a-select>
+          </div>
+
+          <div class="selector-item">
+            <label>难度</label>
+            <a-select
+              v-model:value="selectedDifficulty"
+              placeholder="选择难度"
+              style="width: 150px"
+              @change="onFilterChange"
+              allowClear
+            >
+              <a-select-option value="easy">简单</a-select-option>
+              <a-select-option value="medium">中等</a-select-option>
+              <a-select-option value="hard">困难</a-select-option>
+            </a-select>
+          </div>
+
+          <div class="selector-item">
+            <a-button type="primary" @click="startStudy" :disabled="!canStartStudy" :loading="loadingQuestions">
+              <PlayCircleOutlined /> 开始学习
+            </a-button>
+          </div>
+        </div>
+
+        <div class="study-stats" v-if="studyStats.total > 0">
+          <a-statistic-countdown
+            :value="studyStats.total"
+            format="共 [0] 道题目"
+            :value-style="{fontSize: '14px'}"
+          />
+          <span class="divider">|</span>
+          <span>{{ studyStats.subject }}</span>
+          <span class="divider" v-if="studyStats.homework">|</span>
+          <span v-if="studyStats.homework">{{ studyStats.homework }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 学习进行中的界面 -->
+    <div class="study-area" v-show="isStudying">
+      <!-- 顶部进度条和控制 -->
+      <div class="study-header">
       <div class="progress-section">
         <div class="progress-text">
           <span class="current-question">第 {{ currentQuestion }} 题</span>
@@ -225,6 +331,7 @@
         </div>
       </div>
     </div>
+    </div>
   </div>
 </template>
 
@@ -242,9 +349,13 @@ import {
   HeartOutlined,
   SoundOutlined,
   BookOutlined,
-  CloseOutlined
+  CloseOutlined,
+  PlayCircleOutlined
 } from '@ant-design/icons-vue'
 import { useQuestionStore } from '@/stores/question'
+import { useTaxonomyStore } from '@/stores/taxonomy'
+import { useHomeworkStore } from '@/stores/homework'
+import { message } from 'ant-design-vue'
 import { useChatStore } from '@/stores/chat'
 import { storeToRefs } from 'pinia'
 
@@ -263,10 +374,25 @@ export default {
     HeartOutlined,
     SoundOutlined,
     BookOutlined,
-    CloseOutlined
+    CloseOutlined,
+    PlayCircleOutlined
   },
   data() {
     return {
+      // 学习选择相关
+      studyMode: 'free', // 'free' | 'homework'
+      selectedSubject: null,
+      selectedHomework: null,
+      selectedDifficulty: null,
+      isStudying: false,
+      loadingData: false,
+      studyStats: {
+        total: 0,
+        subject: '',
+        homework: ''
+      },
+
+      // 学习进行相关
       currentQuestion: 1,
       selectedText: '',
       inputMessage: '',
@@ -280,6 +406,12 @@ export default {
   computed: {
     questionStore() {
       return useQuestionStore()
+    },
+    taxonomyStore() {
+      return useTaxonomyStore()
+    },
+    homeworkStore() {
+      return useHomeworkStore()
     },
     chatStore() {
       return useChatStore()
@@ -302,26 +434,234 @@ export default {
         '50%': '#06b6d4',
         '100%': '#10b981'
       }
+    },
+    canStartStudy() {
+      if (this.studyMode === 'homework') {
+        return this.selectedHomework
+      }
+      return this.selectedSubject || this.questions.length > 0
     }
   },
-  mounted() {
-    this.loadQuestions()
+  async mounted() {
+    await this.initializeData()
   },
   methods: {
+    /**
+     * 初始化数据
+     */
+    async initializeData() {
+      this.loadingData = true
+      try {
+        // 并行加载基础数据
+        await Promise.all([
+          this.taxonomyStore.fetchSubjects(),
+          this.loadDefaultQuestions()
+        ])
+      } catch (error) {
+        console.error('初始化数据失败:', error)
+        message.error('初始化数据失败')
+      } finally {
+        this.loadingData = false
+      }
+    },
+
+    /**
+     * 加载默认题目（不筛选）
+     */
+    async loadDefaultQuestions() {
+      try {
+        const response = await this.questionStore.fetchQuestions({
+          page: 1,
+          size: 20,
+          is_public: true
+        })
+        this.updateStudyStats()
+      } catch (error) {
+        console.error('加载默认题目失败:', error)
+      }
+    },
+
+    /**
+     * 根据选择条件加载题目
+     */
     async loadQuestions() {
       this.loadingQuestions = true
       try {
-        await this.questionStore.fetchQuestions({
+        const params = {
           page: 1,
-          size: 50, // 获取更多题目供学习使用
-          is_public: true // 学生只能看公开题目
-        })
+          size: 50,
+          is_public: true
+        }
+
+        // 添加筛选条件
+        if (this.selectedSubject) {
+          params.subject_id = this.selectedSubject
+        }
+        if (this.selectedDifficulty) {
+          params.difficulty = this.selectedDifficulty
+        }
+
+        // 如果是作业模式，需要特殊处理
+        if (this.studyMode === 'homework' && this.selectedHomework) {
+          await this.loadHomeworkQuestions()
+        } else {
+          await this.questionStore.fetchQuestions(params)
+        }
+
+        this.updateStudyStats()
       } catch (error) {
         console.error('加载题目失败:', error)
-        this.$message.error('加载题目失败')
+        message.error('加载题目失败')
       } finally {
         this.loadingQuestions = false
       }
+    },
+
+    /**
+     * 加载作业题目
+     */
+    async loadHomeworkQuestions() {
+      const homework = await this.homeworkStore.fetchStudentHomework(this.selectedHomework)
+      if (homework && homework.question_ids) {
+        // 根据作业中的题目ID获取题目
+        const response = await this.questionStore.fetchQuestions({
+          ids: homework.question_ids.join(','),
+          is_public: true
+        })
+      }
+    },
+
+    /**
+     * 更新学习统计信息
+     */
+    updateStudyStats() {
+      this.studyStats.total = this.totalQuestions
+
+      // 获取学科名称
+      if (this.selectedSubject) {
+        const subject = this.taxonomyStore.subjects.find(s => s.id === this.selectedSubject)
+        this.studyStats.subject = subject ? subject.name : ''
+      } else {
+        this.studyStats.subject = '全部学科'
+      }
+
+      // 获取作业名称
+      if (this.selectedHomework) {
+        const homework = this.homeworkStore.studentHomeworks.find(h => h.id === this.selectedHomework)
+        this.studyStats.homework = homework ? homework.title : ''
+      } else {
+        this.studyStats.homework = ''
+      }
+    },
+
+    /**
+     * 学习模式变更
+     */
+    async onStudyModeChange() {
+      this.selectedHomework = null
+      this.isStudying = false
+
+      if (this.studyMode === 'homework') {
+        // 加载学生作业列表
+        await this.homeworkStore.fetchStudentHomeworks({
+          status: ['assigned', 'in_progress'],
+          page: 1,
+          size: 50
+        })
+      }
+
+      await this.loadQuestions()
+    },
+
+    /**
+     * 学科选择变更
+     */
+    async onSubjectChange() {
+      this.isStudying = false
+      await this.loadQuestions()
+    },
+
+    /**
+     * 作业选择变更
+     */
+    async onHomeworkChange() {
+      this.isStudying = false
+      if (this.selectedHomework) {
+        await this.loadQuestions()
+      }
+    },
+
+    /**
+     * 筛选条件变更
+     */
+    async onFilterChange() {
+      this.isStudying = false
+      await this.loadQuestions()
+    },
+
+    /**
+     * 开始学习
+     */
+    async startStudy() {
+      if (!this.canStartStudy) {
+        message.warning('请先选择学习内容')
+        return
+      }
+
+      if (this.totalQuestions === 0) {
+        message.warning('没有找到相关题目，请调整筛选条件')
+        return
+      }
+
+      this.isStudying = true
+      this.currentQuestion = 1
+
+      // 如果是作业模式，开始作业
+      if (this.studyMode === 'homework' && this.selectedHomework) {
+        try {
+          await this.homeworkStore.startHomework(this.selectedHomework)
+        } catch (error) {
+          console.error('开始作业失败:', error)
+        }
+      }
+
+      message.success('开始学习！')
+    },
+
+    /**
+     * 刷新数据
+     */
+    async refreshData() {
+      await this.initializeData()
+      message.success('刷新成功')
+    },
+
+    /**
+     * 获取作业状态颜色
+     */
+    getStatusColor(status) {
+      const colors = {
+        'assigned': 'blue',
+        'pending': 'blue',
+        'in_progress': 'orange',
+        'completed': 'green',
+        'overdue': 'red'
+      }
+      return colors[status] || 'default'
+    },
+
+    /**
+     * 获取作业状态文本
+     */
+    getStatusText(status) {
+      const texts = {
+        'assigned': '已布置',
+        'pending': '待开始',
+        'in_progress': '进行中',
+        'completed': '已完成',
+        'overdue': '已过期'
+      }
+      return texts[status] || status
     },
 
     prevQuestion() {
@@ -465,21 +805,142 @@ export default {
 <style scoped>
 /* 学习容器 */
 .study-container {
-  padding: 0;
+  padding: 24px;
   min-height: calc(100vh - 120px);
   background: #fafbfc;
+}
+
+/* 学习选择区域 */
+.study-selector {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f0f0f0;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.selector-header {
+  padding: 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.selector-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.selector-actions .ant-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  backdrop-filter: blur(10px);
+}
+
+.selector-actions .ant-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.selector-content {
+  padding: 24px;
+}
+
+.selector-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.selector-row:last-child {
+  margin-bottom: 0;
+}
+
+.selector-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.selector-item label {
+  font-weight: 500;
+  color: #262626;
+  font-size: 14px;
+}
+
+.homework-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.homework-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.study-stats {
+  padding: 16px 20px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: #495057;
+  margin-top: 16px;
+}
+
+.divider {
+  color: #dee2e6;
+  font-weight: 300;
+}
+
+/* 学习区域 */
+.study-area {
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* 顶部控制区 */
 .study-header {
   background: white;
-  padding: 24px;
+  padding: 20px 24px;
   border-radius: 16px;
   margin-bottom: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid #f0f0f0;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: sticky;
+  top: 24px;
+  z-index: 10;
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.95);
 }
 
 .progress-section {
@@ -522,7 +983,7 @@ export default {
 .study-content {
   display: flex;
   gap: 24px;
-  height: calc(100vh - 240px);
+  min-height: calc(100vh - 300px);
 }
 
 .content-left {
@@ -1022,16 +1483,154 @@ export default {
   opacity: 0.5;
 }
 
-/* 响应式 */
+/* 响应式设计 */
 @media (max-width: 1200px) {
   .study-content {
     flex-direction: column;
-    height: auto;
+    min-height: auto;
   }
-  
+
   .content-right {
     width: 100%;
     height: 500px;
+  }
+
+  .selector-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .selector-item {
+    width: 100%;
+  }
+
+  .selector-item .ant-select {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .study-container {
+    padding: 16px;
+  }
+
+  .study-selector {
+    margin-bottom: 16px;
+  }
+
+  .selector-header {
+    padding: 16px;
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+
+  .selector-content {
+    padding: 16px;
+  }
+
+  .study-header {
+    padding: 16px;
+    margin-bottom: 16px;
+    flex-direction: column;
+    gap: 16px;
+    position: static;
+  }
+
+  .progress-section {
+    margin-right: 0;
+    margin-bottom: 12px;
+  }
+
+  .control-buttons {
+    gap: 8px;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .nav-button {
+    flex: 1;
+    max-width: 120px;
+  }
+
+  .question-card,
+  .answer-card {
+    margin-bottom: 16px;
+  }
+
+  .question-card .card-header {
+    padding: 16px;
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+  }
+
+  .question-content {
+    padding: 16px;
+  }
+
+  .chat-card {
+    height: 400px;
+  }
+
+  .floating-toolbar {
+    position: fixed;
+    bottom: 80px;
+    right: 16px;
+    flex-direction: row;
+    opacity: 1;
+    transform: none;
+    gap: 8px;
+  }
+
+  .study-stats {
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+  }
+
+  .study-stats .divider {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .study-container {
+    padding: 12px;
+  }
+
+  .selector-header h2 {
+    font-size: 18px;
+  }
+
+  .question-number {
+    font-size: 20px !important;
+  }
+
+  .question-content h3 {
+    font-size: 16px;
+  }
+
+  .answer-card .card-header h3 {
+    font-size: 14px;
+  }
+
+  .chat-messages {
+    padding: 12px;
+  }
+
+  .message-bubble {
+    max-width: 85%;
+  }
+
+  .chat-input {
+    padding: 12px;
+  }
+
+  .toolbar-button {
+    width: 28px;
+    height: 28px;
   }
 }
 </style>

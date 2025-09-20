@@ -159,21 +159,31 @@ class AuthService:
         
         return True, "密码符合要求"
     
-    def hash_password(self, password: str) -> Tuple[str, str]:
+    def hash_password(self, password: str) -> str:
         """密码哈希 - 返回哈希值和盐值"""
         # 生成盐值
         salt = secrets.token_hex(16)
-        
+
         # 使用argon2加密
         password_hash = self.pwd_context.hash(password + salt)
-        
-        return password_hash, salt
+
+        return f"{password_hash}${salt}"
     
     def verify_password(self, plain_password: str, hashed_password: str, salt: str = None) -> bool:
         """验证密码"""
         try:
             if salt:
                 return self.pwd_context.verify(plain_password + salt, hashed_password)
+            elif '$' in hashed_password:
+                # 新格式：argon2_hash$salt
+                # 找到最后一个$符号的位置
+                last_dollar_pos = hashed_password.rfind('$')
+                if last_dollar_pos != -1:
+                    stored_hash = hashed_password[:last_dollar_pos]
+                    salt = hashed_password[last_dollar_pos + 1:]
+                    return self.pwd_context.verify(plain_password + salt, stored_hash)
+                else:
+                    return self.pwd_context.verify(plain_password, hashed_password)
             else:
                 return self.pwd_context.verify(plain_password, hashed_password)
         except Exception as e:
@@ -452,14 +462,14 @@ class AuthService:
                 organization_id = organization.organization_id
             
             # 加密密码
-            password_hash, salt = self.hash_password(password)
-            
+            password_hash = self.hash_password(password)
+
             # 创建用户
             user = ConfigUser(
                 user_name=username,
                 user_email=email,
                 user_password_hash=password_hash,
-                user_password_salt=salt,
+                user_password_salt="",  # 盐值已包含在哈希中
                 user_full_name=user_data.get("user_full_name"),
                 user_role=UserRole(user_data.get("user_role", "student")),
                 organization_id=organization_id,
@@ -582,7 +592,7 @@ class AuthService:
                 )
             
             # 验证密码
-            if not self.verify_password(password, user.user_password_hash, user.user_password_salt):
+            if not self.verify_password(password, user.user_password_hash):
                 # 增加失败次数
                 user.user_failed_login_attempts += 1
                 
@@ -771,7 +781,7 @@ class AuthService:
         """修改密码"""
         try:
             # 验证原密码
-            if not self.verify_password(old_password, user.user_password_hash, user.user_password_salt):
+            if not self.verify_password(old_password, user.user_password_hash):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="原密码错误"
@@ -786,11 +796,11 @@ class AuthService:
                 )
             
             # 加密新密码
-            new_password_hash, new_salt = self.hash_password(new_password)
-            
+            new_password_hash = self.hash_password(new_password)
+
             # 更新用户密码
             user.user_password_hash = new_password_hash
-            user.user_password_salt = new_salt
+            user.user_password_salt = ""  # 盐值已包含在哈希中
             user.user_last_password_change = datetime.utcnow()
             
             # 撤销所有现有会话（强制重新登录）
@@ -853,3 +863,8 @@ async def get_current_student(current_user: ConfigUser = Depends(get_current_use
             detail="需要学生权限"
         )
     return current_user
+
+
+def hash_password(password: str) -> str:
+    """独立的密码哈希函数 - 供其他模块使用"""
+    return auth_service.hash_password(password)

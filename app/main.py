@@ -16,7 +16,7 @@ from app.core.database import init_db, close_db
 from app.core.redis_client import init_redis, close_redis
 from app.core.security import security_middleware
 from app.core.error_handler import error_handler
-from app.api import auth, questions, chat, public, classes, homework, prompts, files
+from app.api import auth, questions, chat, public, classes, homework, prompts, files, rewriter, analytics, profile, taxonomy, teaching, notes, admin, intelligent_tutor
 from app.models.pydantic_models import BaseResponse
 
 
@@ -178,6 +178,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # 注册路由
 app.include_router(auth.router, prefix="/api")
+app.include_router(profile.router, prefix="/api")
 app.include_router(questions.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(public.router, prefix="/api")
@@ -185,7 +186,14 @@ app.include_router(classes.router, prefix="/api")
 app.include_router(homework.router, prefix="/api")
 app.include_router(prompts.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
+app.include_router(rewriter.router, prefix="/api")
 app.include_router(homework.router_student, prefix="/api")
+app.include_router(analytics.router, prefix="/api")
+app.include_router(taxonomy.router, prefix="/api")
+app.include_router(teaching.router, prefix="/api")
+app.include_router(notes.router, prefix="/api")
+app.include_router(intelligent_tutor.router)
+app.include_router(admin.router)
 
 
 # 根路径

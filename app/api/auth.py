@@ -277,7 +277,7 @@ async def get_user_profile(
             organization_id=current_user.organization_id,
             user_is_verified=current_user.user_is_verified,
             created_time=current_user.created_time,
-            last_login_time=getattr(current_user, 'user_last_login_time', None) or getattr(current_user, 'last_login_time', None)
+            last_login_time=current_user.user_last_login_time
         )
         
     except Exception as e:

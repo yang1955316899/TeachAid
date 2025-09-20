@@ -3,6 +3,11 @@
     <a-row :gutter="16">
       <a-col :span="24">
         <a-card title="学习进度概览">
+          <template #extra>
+            <a-button type="primary" :loading="loading" @click="refreshData">
+              刷新数据
+            </a-button>
+          </template>
           <a-row :gutter="16">
             <a-col :span="6">
               <a-statistic
@@ -96,32 +101,23 @@
 </template>
 
 <script>
+import { analyticsApi } from '@/api/analytics'
+import { useAuthStore } from '@/stores/auth'
+import { message } from 'ant-design-vue'
+
 export default {
   name: 'StudentProgress',
   data() {
     return {
+      loading: false,
       progressData: {
-        totalHours: 28.5,
-        completedHomework: 12,
-        chatCount: 156,
-        averageScore: 85.2
+        totalHours: 0,
+        completedHomework: 0,
+        chatCount: 0,
+        averageScore: 0
       },
-      subjectProgress: [
-        { subject: '数学', progress: 75 },
-        { subject: '英语', progress: 88 },
-        { subject: '物理', progress: 65 },
-        { subject: '化学', progress: 92 }
-      ],
-      weakPoints: [
-        {
-          topic: '二次函数图像变换',
-          suggestion: '建议多做相关练习题，加强理解'
-        },
-        {
-          topic: '英语时态运用',
-          suggestion: '建议复习时态语法规则'
-        }
-      ],
+      subjectProgress: [],
+      weakPoints: [],
       recordColumns: [
         {
           title: '日期',
@@ -149,24 +145,105 @@ export default {
           key: 'completion'
         }
       ],
-      studyRecords: [
+      studyRecords: [],
+      days: 30 // 默认查询30天数据
+    }
+  },
+  async mounted() {
+    await this.loadProgressData()
+  },
+  methods: {
+    async loadProgressData() {
+      try {
+        this.loading = true
+        const authStore = useAuthStore()
+        const currentUser = authStore.user
+
+        if (!currentUser?.user_id) {
+          message.error('用户信息未找到，请重新登录')
+          return
+        }
+
+        const response = await analyticsApi.getStudentReport(currentUser.user_id, {
+          days: this.days
+        })
+
+        if (response.success) {
+          const data = response.data
+          this.processProgressData(data)
+        } else {
+          message.error(response.message || '获取学习进度失败')
+        }
+      } catch (error) {
+        console.error('加载学习进度数据失败:', error)
+        message.error('加载学习进度数据失败')
+      } finally {
+        this.loading = false
+      }
+    },
+
+    processProgressData(data) {
+      // 处理统计数据
+      const learning = data.learning_summary || {}
+      const homework = data.homework_summary || {}
+
+      this.progressData = {
+        // 估算总学习时长 (假设每次对话平均5分钟)
+        totalHours: ((learning.total_chat_sessions || 0) * learning.average_session_length * 5 / 60).toFixed(1),
+        completedHomework: homework.total_homeworks || 0,
+        chatCount: learning.total_chat_sessions || 0,
+        // 用完成率代替平均分数
+        averageScore: homework.average_completion_rate || 0
+      }
+
+      // 处理学科掌握情况
+      if (learning.most_active_subject) {
+        this.subjectProgress = [
+          {
+            subject: learning.most_active_subject,
+            progress: Math.min(90, homework.average_completion_rate || 50)
+          },
+          { subject: '其他学科', progress: 60 }
+        ]
+      } else {
+        this.subjectProgress = [
+          { subject: '暂无数据', progress: 0 }
+        ]
+      }
+
+      // 处理薄弱知识点
+      const weakKnowledge = data.weak_knowledge_points || []
+      this.weakPoints = weakKnowledge.slice(0, 5).map(point => ({
+        topic: point,
+        suggestion: '建议加强练习和复习'
+      }))
+
+      // 如果没有薄弱知识点，显示默认信息
+      if (this.weakPoints.length === 0) {
+        this.weakPoints = [
+          {
+            topic: '暂无薄弱知识点',
+            suggestion: '继续保持良好的学习状态'
+          }
+        ]
+      }
+
+      // 学习记录暂时使用模拟数据，后续可从其他API获取
+      this.studyRecords = [
         {
           key: '1',
-          date: '2024-01-15',
-          homework: '数学练习册第三章',
-          duration: '2.5小时',
-          chatCount: 15,
-          completion: '100%'
-        },
-        {
-          key: '2',
-          date: '2024-01-14',
-          homework: '英语阅读理解',
-          duration: '1.8小时',
-          chatCount: 8,
-          completion: '100%'
+          date: new Date().toISOString().split('T')[0],
+          homework: '最近学习活动',
+          duration: `${this.progressData.totalHours}小时`,
+          chatCount: this.progressData.chatCount,
+          completion: `${this.progressData.averageScore}%`
         }
       ]
+    },
+
+    async refreshData() {
+      await this.loadProgressData()
+      message.success('数据已刷新')
     }
   }
 }

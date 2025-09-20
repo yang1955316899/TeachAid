@@ -4,7 +4,7 @@
     <div class="welcome-banner">
       <div class="welcome-content">
         <div class="welcome-text">
-          <h1>欢迎回来，张老师！</h1>
+          <h1>欢迎回来，{{ user.name }}！</h1>
           <p>今天又是充满活力的一天，让我们一起帮助学生们学习吧 🎯</p>
         </div>
         <div class="welcome-stats">
@@ -88,11 +88,15 @@
             <h3>最近题目</h3>
             <a-button type="text" size="small">查看全部</a-button>
           </div>
-          <div class="questions-list">
+          <div class="questions-list" v-if="!loading">
+            <div v-if="recentQuestions.length === 0" class="empty-state">
+              <p>暂无题目数据</p>
+            </div>
             <div
               v-for="item in recentQuestions"
               :key="item.id"
               class="question-item"
+              @click="viewQuestion(item)"
             >
               <div class="question-avatar">
                 <span class="subject-tag" :class="getSubjectClass(item.subject)">
@@ -112,6 +116,10 @@
                 </a-tag>
               </div>
             </div>
+          </div>
+          <div v-else class="loading-state">
+            <a-spin />
+            <p>正在加载数据...</p>
           </div>
         </div>
       </a-col>
@@ -186,6 +194,11 @@ import {
   UsergroupAddOutlined,
   RightOutlined
 } from '@ant-design/icons-vue'
+import { useQuestionStore } from '@/stores/question'
+import { useHomeworkStore } from '@/stores/homework'
+import { useClassStore } from '@/stores/class'
+import { useAuthStore } from '@/stores/auth'
+import { storeToRefs } from 'pinia'
 
 export default {
   name: 'TeacherDashboard',
@@ -203,47 +216,122 @@ export default {
   },
   data() {
     return {
+      loading: false,
       stats: {
-        totalQuestions: 128,
-        totalHomework: 45,
-        totalStudents: 320,
-        aiCalls: 1250,
-        todayTasks: 8,
-        activeStudents: 156
+        totalQuestions: 0,
+        totalHomework: 0,
+        totalStudents: 0,
+        aiCalls: 0,
+        todayTasks: 0,
+        activeStudents: 0
       },
-      recentQuestions: [
-        {
-          id: 1,
-          title: '二次函数综合应用题',
-          subject: '数学',
-          createTime: '2024-01-15',
-          status: '已改写'
-        },
-        {
-          id: 2,
-          title: '英语阅读理解练习',
-          subject: '英语',
-          createTime: '2024-01-14',
-          status: '待改写'
-        },
-        {
-          id: 3,
-          title: '物理力学计算题',
-          subject: '物理',
-          createTime: '2024-01-13',
-          status: '已改写'
-        },
-        {
-          id: 4,
-          title: '化学方程式配平',
-          subject: '化学',
-          createTime: '2024-01-12',
-          status: '已改写'
-        }
-      ]
+      recentQuestions: []
     }
   },
+  computed: {
+    user() {
+      const authStore = useAuthStore()
+      return {
+        name: authStore.userFullName || authStore.userName || '教师用户'
+      }
+    }
+  },
+  setup() {
+    const questionStore = useQuestionStore()
+    const homeworkStore = useHomeworkStore()
+    const classStore = useClassStore()
+
+    const { questions } = storeToRefs(questionStore)
+    const { homeworks } = storeToRefs(homeworkStore)
+    const { classes } = storeToRefs(classStore)
+
+    return {
+      questionStore,
+      homeworkStore,
+      classStore,
+      questions,
+      homeworks,
+      classes
+    }
+  },
+  async mounted() {
+    await this.loadDashboardData()
+  },
   methods: {
+    async loadDashboardData() {
+      this.loading = true
+      try {
+        // 并行加载各种数据
+        await Promise.all([
+          this.loadQuestions(),
+          this.loadHomeworks(),
+          this.loadClasses()
+        ])
+
+        // 更新统计数据
+        this.updateStats()
+      } catch (error) {
+        console.error('加载仪表盘数据失败:', error)
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async loadQuestions() {
+      try {
+        await this.questionStore.fetchQuestions({ page: 1, size: 10 })
+        // 设置最近题目
+        this.recentQuestions = (this.questions || []).slice(0, 4).map(q => ({
+          id: q.id,
+          title: q.title,
+          subject: q.subject,
+          createTime: q.created_at ? new Date(q.created_at).toLocaleDateString() : '--',
+          status: q.rewritten_answer ? '已改写' : '待改写'
+        }))
+      } catch (error) {
+        console.error('加载题目数据失败:', error)
+      }
+    },
+
+    async loadHomeworks() {
+      try {
+        await this.homeworkStore.fetchHomeworks({ page: 1, size: 50 })
+      } catch (error) {
+        console.error('加载作业数据失败:', error)
+      }
+    },
+
+    async loadClasses() {
+      try {
+        await this.classStore.fetchClasses({ page: 1, size: 50 })
+      } catch (error) {
+        console.error('加载班级数据失败:', error)
+      }
+    },
+
+    updateStats() {
+      // 计算统计数据
+      const questionsData = this.questions || []
+      const homeworksData = this.homeworks || []
+      const classesData = this.classes || []
+
+      this.stats = {
+        totalQuestions: questionsData.length,
+        totalHomework: homeworksData.length,
+        totalStudents: classesData.reduce((sum, cls) => sum + (cls.student_count || 0), 0),
+        // AI调用次数暂时用改写过的题目数量估算
+        aiCalls: questionsData.filter(q => q.rewritten_answer).length * 5,
+        // 今日任务：未发布的作业数量
+        todayTasks: homeworksData.filter(h => !h.is_published).length,
+        // 活跃学生：估算值
+        activeStudents: Math.floor(classesData.reduce((sum, cls) => sum + (cls.student_count || 0), 0) * 0.7)
+      }
+    },
+
+    viewQuestion(question) {
+      this.$router.push(`/teacher/question/${question.id}/detail`)
+    },
+
     getSubjectClass(subject) {
       const classMap = {
         '数学': 'subject-math',
@@ -429,8 +517,9 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
+  padding: 16px 24px;
   border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
 }
 
 .card-header h3 {
@@ -532,19 +621,21 @@ export default {
   padding: 16px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+  overflow-y: auto;
 }
 
 .action-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px;
+  padding: 12px;
   border-radius: 12px;
   border: 1px solid #f0f0f0;
   background: #fafafa;
   cursor: pointer;
   transition: all 0.3s ease;
+  flex-shrink: 0;
 }
 
 .action-item:hover {
@@ -554,14 +645,15 @@ export default {
 }
 
 .action-icon {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 16px;
   color: white;
+  flex-shrink: 0;
 }
 
 .action-icon-1 {
@@ -582,6 +674,8 @@ export default {
 
 .action-info {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .action-title {
@@ -589,11 +683,17 @@ export default {
   font-weight: 500;
   color: #262626;
   margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .action-desc {
   font-size: 12px;
   color: #8c8c8c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .action-arrow {
@@ -604,5 +704,18 @@ export default {
 .action-item:hover .action-arrow {
   color: #1890ff;
   transform: translateX(4px);
+}
+
+/* 空状态和加载状态 */
+.empty-state,
+.loading-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #8c8c8c;
+}
+
+.loading-state p {
+  margin-top: 16px;
+  margin-bottom: 0;
 }
 </style>

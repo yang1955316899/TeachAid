@@ -14,7 +14,9 @@ import {
   FileTextOutlined,
   BookOutlined,
   TeamOutlined,
-  SettingOutlined
+  LinkOutlined,
+  SettingOutlined,
+  UserOutlined
 } from '@ant-design/icons-vue'
 
 export default {
@@ -44,6 +46,11 @@ export default {
           key: 'class',
           title: '班级管理',
           icon: TeamOutlined
+        },
+        {
+          key: 'teaching',
+          title: '授课关系管理',
+          icon: LinkOutlined
         },
         {
           key: 'prompt',

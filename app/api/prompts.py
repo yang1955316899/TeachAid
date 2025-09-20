@@ -14,67 +14,84 @@ from app.models.database_models import PromptTemplate
 from app.models.pydantic_models import (
     BaseResponse, PaginationQuery, PaginationResponse
 )
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/prompts", tags=["提示词模板"])
 
 
 # 简化的请求/响应模型
-class PromptTemplateCreate:
+class PromptTemplateCreate(BaseModel):
     """创建提示词模板请求"""
-    def __init__(self, name: str, description: str = None, category: str = "general",
-                 subject: str = None, question_type: str = None, system_prompt: str = None,
-                 user_prompt_template: str = None, variables: List = None, examples: List = None):
-        self.name = name
-        self.description = description
-        self.category = category
-        self.subject = subject
-        self.question_type = question_type
-        self.system_prompt = system_prompt
-        self.user_prompt_template = user_prompt_template
-        self.variables = variables or []
-        self.examples = examples or []
+    name: str
+    description: str = None
+    category: str = "general"
+    subject: str = None
+    question_type: str = None
+    system_prompt: str = None
+    user_prompt_template: str = None
+    variables: List = []
+    examples: List = []
 
 
-class PromptTemplateUpdate:
+class PromptTemplateUpdate(BaseModel):
     """更新提示词模板请求"""
-    def __init__(self, name: str = None, description: str = None, category: str = None,
-                 subject: str = None, question_type: str = None, system_prompt: str = None,
-                 user_prompt_template: str = None, variables: List = None, examples: List = None,
-                 is_active: bool = None):
-        self.name = name
-        self.description = description
-        self.category = category
-        self.subject = subject
-        self.question_type = question_type
-        self.system_prompt = system_prompt
-        self.user_prompt_template = user_prompt_template
-        self.variables = variables
-        self.examples = examples
-        self.is_active = is_active
+    name: str = None
+    description: str = None
+    category: str = None
+    subject: str = None
+    question_type: str = None
+    system_prompt: str = None
+    user_prompt_template: str = None
+    variables: List = None
+    examples: List = None
+    is_active: bool = None
 
 
-class PromptTemplateResponse:
+class PromptTemplateResponse(BaseModel):
     """提示词模板响应"""
-    def __init__(self, template_obj):
-        self.id = template_obj.id
-        self.name = template_obj.name
-        self.description = template_obj.description
-        self.category = template_obj.category
-        self.subject = template_obj.subject
-        self.question_type = template_obj.question_type
-        self.system_prompt = template_obj.system_prompt
-        self.user_prompt_template = template_obj.user_prompt_template
-        self.variables = template_obj.variables
-        self.examples = template_obj.examples
-        self.version = template_obj.version
-        self.parent_template_id = template_obj.parent_template_id
-        self.usage_count = template_obj.usage_count
-        self.avg_quality_score = template_obj.avg_quality_score
-        self.creator_id = template_obj.creator_id
-        self.is_active = template_obj.is_active
-        self.is_builtin = template_obj.is_builtin
-        self.created_at = template_obj.created_at.isoformat() if template_obj.created_at else None
-        self.updated_at = template_obj.updated_at.isoformat() if template_obj.updated_at else None
+    id: str
+    name: str
+    description: str = None
+    category: str
+    subject: str = None
+    question_type: str = None
+    system_prompt: str = None
+    user_prompt_template: str
+    variables: List = []
+    examples: List = []
+    version: int
+    parent_template_id: str = None
+    usage_count: int
+    avg_quality_score: float = None
+    creator_id: str = None
+    is_active: bool
+    is_builtin: bool
+    created_at: str = None
+    updated_at: str = None
+    
+    @classmethod
+    def from_orm(cls, template_obj):
+        return cls(
+            id=template_obj.id,
+            name=template_obj.name,
+            description=template_obj.description,
+            category=template_obj.category,
+            subject=template_obj.subject,
+            question_type=template_obj.question_type,
+            system_prompt=template_obj.system_prompt,
+            user_prompt_template=template_obj.user_prompt_template,
+            variables=template_obj.variables,
+            examples=template_obj.examples,
+            version=template_obj.version,
+            parent_template_id=template_obj.parent_template_id,
+            usage_count=template_obj.usage_count,
+            avg_quality_score=template_obj.avg_quality_score,
+            creator_id=template_obj.creator_id,
+            is_active=template_obj.is_active,
+            is_builtin=template_obj.is_builtin,
+            created_at=(template_obj.created_time.isoformat() if hasattr(template_obj, 'created_time') and template_obj.created_time else None),
+            updated_at=(template_obj.updated_time.isoformat() if hasattr(template_obj, 'updated_time') and template_obj.updated_time else None)
+        )
 
 
 @router.get("", response_model=PaginationResponse, summary="获取提示词模板列表")
@@ -122,7 +139,7 @@ async def list_prompt_templates(
         query = (
             select(PromptTemplate)
             .where(and_(*conditions))
-            .order_by(PromptTemplate.created_at.desc())
+            .order_by(PromptTemplate.created_time.desc())
             .offset(offset)
             .limit(pagination.size)
         )
@@ -131,7 +148,7 @@ async def list_prompt_templates(
         templates = result.scalars().all()
         
         # 转换为响应模型
-        template_responses = [PromptTemplateResponse(tpl) for tpl in templates]
+        template_responses = [PromptTemplateResponse.from_orm(tpl) for tpl in templates]
         
         return PaginationResponse(
             items=template_responses,
@@ -180,7 +197,7 @@ async def get_prompt_template(
         return BaseResponse(
             success=True,
             message="获取提示词模板详情成功",
-            data=PromptTemplateResponse(template_obj).__dict__
+            data=PromptTemplateResponse.from_orm(template_obj).dict()
         )
         
     except HTTPException:
@@ -267,10 +284,9 @@ async def update_prompt_template(
             )
         
         # 更新字段
-        update_data = template_data.__dict__
+        update_data = template_data.dict(exclude_unset=True)
         for field, value in update_data.items():
-            if value is not None:
-                setattr(template_obj, field, value)
+            setattr(template_obj, field, value)
         
         await db.commit()
         
@@ -376,7 +392,7 @@ async def get_public_templates(
         templates = result.scalars().all()
         
         # 转换为响应模型
-        template_responses = [PromptTemplateResponse(tpl) for tpl in templates]
+        template_responses = [PromptTemplateResponse.from_orm(tpl) for tpl in templates]
         
         return BaseResponse(
             success=True,

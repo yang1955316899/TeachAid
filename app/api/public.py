@@ -53,7 +53,7 @@ async def get_public_questions(
         
         # 分页查询
         offset = (pagination.page - 1) * pagination.size
-        query = query.order_by(Question.created_at.desc()).offset(offset).limit(pagination.size)
+        query = query.order_by(Question.created_time.desc()).offset(offset).limit(pagination.size)
         
         result = await db.execute(query)
         questions = result.scalars().all()
@@ -61,7 +61,7 @@ async def get_public_questions(
         # 转换为响应格式
         items = []
         for question in questions:
-            items.append(QuestionResponse.model_validate(question))
+            items.append(QuestionResponse.from_orm(question).dict())
         
         return BaseResponse(
             success=True,
@@ -112,7 +112,7 @@ async def get_public_question_detail(
         return BaseResponse(
             success=True,
             message="获取题目详情成功",
-            data=QuestionResponse.model_validate(question)
+            data=QuestionResponse.from_orm(question).dict()
         )
         
     except Exception as e:

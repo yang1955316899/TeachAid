@@ -8,7 +8,7 @@ export const questionApi = {
    * 获取题目列表
    */
   getQuestions(params = {}) {
-    return http.get('/questions/public', { params })
+    return http.get('/questions/filter', { params })
   },
 
   /**
@@ -63,6 +63,11 @@ export const questionApi = {
    * 改写答案
    */
   rewriteAnswer(questionId, data) {
-    return http.put(`/questions/${questionId}/rewrite`, data)
+    const params = new URLSearchParams()
+    if (data.style) params.append('style', data.style)
+    if (data.template_id) params.append('template_id', data.template_id)
+
+    const url = `/questions/${questionId}/rewrite${params.toString() ? '?' + params.toString() : ''}`
+    return http.put(url)
   }
 }

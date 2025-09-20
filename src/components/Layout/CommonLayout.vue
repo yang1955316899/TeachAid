@@ -98,7 +98,7 @@ export default {
     userType: {
       type: String,
       required: true,
-      validator: (value) => ['student', 'teacher'].includes(value)
+      validator: (value) => ['student', 'teacher', 'admin'].includes(value)
     },
     menuItems: {
       type: Array,

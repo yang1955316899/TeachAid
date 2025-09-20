@@ -1,98 +1,73 @@
 import axios from 'axios'
+import { message } from 'ant-design-vue'
 
-// 创建axios实例
+// 创建 axios 实例
 const http = axios.create({
   baseURL: '/api',
   timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  headers: { 'Content-Type': 'application/json' }
 })
 
-// 刷新令牌标志，防止并发刷新
+// 刷新令牌并发控制
 let isRefreshing = false
 let failedQueue = []
-
-// 处理失败的队列
 const processQueue = (error, token = null) => {
-  failedQueue.forEach(prom => {
-    if (error) {
-      prom.reject(error)
-    } else {
-      prom.resolve(token)
-    }
+  failedQueue.forEach((p) => {
+    if (error) p.reject(error)
+    else p.resolve(token)
   })
   failedQueue = []
 }
 
-// 请求拦截器
+// 请求拦截器：带上 token
 http.interceptors.request.use(
   async (config) => {
-    // 从localStorage获取token
     const token = localStorage.getItem('token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
+    if (token) config.headers.Authorization = `Bearer ${token}`
     return config
   },
-  (error) => {
-    return Promise.reject(error)
-  }
+  (error) => Promise.reject(error)
 )
 
-// 响应拦截器
+// 响应拦截器：统一数据/错误处理
 http.interceptors.response.use(
-  (response) => {
-    return response.data
-  },
+  (response) => response.data,
   async (error) => {
-    const originalRequest = error.config
+    const originalRequest = error.config || {}
+    const status = error.response?.status
+    const data = error.response?.data
 
-    // 处理401错误（令牌过期）
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // 401：尝试刷新令牌
+    if (status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
-        // 如果正在刷新令牌，将请求加入队列
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject })
-        }).then(token => {
-          originalRequest.headers.Authorization = `Bearer ${token}`
-          return http(originalRequest)
-        }).catch(err => {
-          return Promise.reject(err)
         })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`
+            return http(originalRequest)
+          })
+          .catch((err) => Promise.reject(err))
       }
 
       originalRequest._retry = true
       isRefreshing = true
-
       try {
-        // 尝试刷新令牌
         const refreshToken = localStorage.getItem('refreshToken')
         if (refreshToken) {
-          const response = await axios.post('/api/auth/refresh', {
-            refresh_token: refreshToken
-          })
-
-          const { access_token } = response.data.data
-          
-          // 更新本地存储
+          const res = await axios.post('/api/auth/refresh', { refresh_token: refreshToken })
+          const { access_token } = res.data.data
           localStorage.setItem('token', access_token)
-          
-          // 更新请求头
           originalRequest.headers.Authorization = `Bearer ${access_token}`
-          
-          // 处理队列中的请求
           processQueue(null, access_token)
-          
-          // 重试原始请求
           return http(originalRequest)
         }
       } catch (refreshError) {
-        // 刷新失败，清除认证状态并跳转登录页
         processQueue(refreshError, null)
         localStorage.removeItem('token')
         localStorage.removeItem('refreshToken')
         localStorage.removeItem('user')
+        message.error('登录状态已过期，请重新登录')
         window.location.href = '/login'
         return Promise.reject(refreshError)
       } finally {
@@ -100,12 +75,22 @@ http.interceptors.response.use(
       }
     }
 
-    // 处理其他错误
-    const errorMessage = error.response?.data?.detail || error.message || '请求失败'
-    console.error('HTTP请求错误:', errorMessage)
-    
+    // 其他错误：显示服务端返回的 message/detail
+    try {
+      const serverMessage = data?.detail || data?.message || data?.error?.message
+      if (status === 423) {
+        message.error(serverMessage || '账户已锁定')
+      } else if (status && status >= 400) {
+        message.error(serverMessage || '请求失败')
+      }
+      console.error('HTTP请求错误:', serverMessage || error.message)
+    } catch (_) {
+      // 忽略解析异常
+    }
+
     return Promise.reject(error)
   }
 )
 
 export default http
+

@@ -30,22 +30,37 @@ export const useClassStore = defineStore('class', {
       this.loading = true
       try {
         const response = await classApi.getClasses(params)
-        if (response.success) {
-          this.classes = response.data.items
-          this.pagination = {
-            current: response.data.page,
-            pageSize: response.data.size,
-            total: response.data.total,
-            pages: response.data.pages
-          }
-          return response
+        // 兼容 BaseResponse 与直接分页响应两种结构
+        let items, page, size, total, pages, success = true
+        if (response && Object.prototype.hasOwnProperty.call(response, 'success')) {
+          success = !!response.success
+          if (!success) throw new Error(response.message || '获取班级列表失败')
+          const d = response.data || {}
+          items = d.items || []
+          page = d.page || 1
+          size = d.size || this.pagination.pageSize
+          total = d.total || 0
+          pages = d.pages || 0
         } else {
-          throw new Error(response.message || '获取班级列表失败')
+          items = response?.items || []
+          page = response?.page || 1
+          size = response?.size || this.pagination.pageSize
+          total = response?.total || 0
+          pages = response?.pages || 0
         }
+        this.classes = items
+        this.pagination = {
+          current: page,
+          pageSize: size,
+          total,
+          pages
+        }
+        return response
       } catch (error) {
         console.error('获取班级失败:', error)
         message.error('获取班级列表失败')
-        throw error
+        this.classes = []
+        return { success: false, message: error?.message || '获取班级列表失败' }
       } finally {
         this.loading = false
       }

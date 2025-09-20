@@ -438,3 +438,7 @@ class UnifiedAIFramework:
                 "status": "unhealthy", 
                 "error": str(e)
             }
+
+
+# 全局实例
+unified_ai = UnifiedAIFramework()
