@@ -81,18 +81,18 @@ class Settings(BaseSettings):
     debug: bool = False
     host: str = "0.0.0.0"
     port: int = 50002
-    
+
     # 数据库配置
     database_url: str = "mysql+aiomysql://root:root@localhost:3306/teachaid"
     database_echo: bool = False
     database_pool_size: int = 10
     database_max_overflow: int = 20
-    
+
     # Redis配置
     redis_url: str = "redis://localhost:6379/0"
     redis_encoding: str = "utf-8"
     redis_decode_responses: bool = True
-    
+
     # JWT配置
     jwt_secret: str = "your-super-secret-jwt-key-change-in-production"
     jwt_algorithm: str = "HS256"
@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     jwt_issuer: str = "TeachAid"
     jwt_audience: str = "TeachAid-Users"
     jwt_token_prefix: str = "Bearer"
-    
+
     # AI配置
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
@@ -112,22 +112,44 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = False
     langchain_api_key: Optional[str] = None
     langchain_project: str = "TeachAid"
-    
+
     # 文件上传配置
     max_upload_size: int = 50
     upload_dir: str = "uploads"
     allowed_extensions_str: str = "jpg,jpeg,png,pdf,txt"
-    
+
     # 缓存配置
     cache_ttl: int = 3600
     semantic_cache_threshold: float = 0.85
     exact_cache_ttl: int = 86400
-    
+
     # 成本控制配置
     monthly_budget_limit: float = 1000.0
     cost_tracking_enabled: bool = True
     alert_threshold: float = 0.8
-    
+
+    # 安全配置
+    security_secret_key: str = "TeachAid-Security-Secret-2024-Change-In-Production"
+    allowed_hosts: str = "localhost,127.0.0.1,*.teachaid.com"
+
+    # 邮件配置
+    smtp_host: Optional[str] = "smtp.gmail.com"
+    smtp_port: Optional[str] = "587"
+    smtp_use_tls: Optional[str] = "true"
+    smtp_username: Optional[str] = "your_email@gmail.com"
+    smtp_password: Optional[str] = "your_email_password"
+
+    # 日志配置
+    log_level: str = "INFO"
+    log_file: str = "logs/teachaid.log"
+    log_max_size: str = "100MB"
+    log_backup_count: str = "10"
+
+    # 监控配置
+    sentry_dsn: Optional[str] = "your_sentry_dsn_here"
+    prometheus_enabled: str = "false"
+    metrics_port: str = "9090"
+
     model_config = {
         "env_file": ".env",
         "case_sensitive": False

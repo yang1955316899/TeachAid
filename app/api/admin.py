@@ -6,18 +6,19 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import HTTPBearer
-from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_, desc, asc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, and_, or_, desc, asc, select, update, delete
+from loguru import logger
 
 from app.core.database import get_db
 from app.core.unified_ai_framework import UnifiedAIFramework
 from app.models.auth_models import (
-    ConfigUser, UserRole, UserStatus, ConfigOrganization, LogLogin, LogAudit,
+    ConfigUser, UserRole, UserStatus, LogLogin, LogAudit,
     SystemSettings, ConfigPermission, ConfigRolePermission
 )
 from app.models.database_models import (
     Class, Teaching, Question, Homework, StudentHomework, ClassStudent,
-    Grade, Subject, Chapter, ChatSession, ChatMessage, FileUpload
+    Grade, Subject, Chapter, ChatSession, ChatMessage, FileUpload, ConfigOrganization
 )
 from app.models.pydantic_models import BaseResponse
 from app.services.auth_service import get_current_user, get_current_admin
@@ -48,16 +49,16 @@ class PageResponseModel(BaseModel):
 # Pydantic 模型定义
 # =============================================================================
 
-class UserListQuery(BaseModel):
-    """用户列表查询参数"""
-    page: int = Field(1, ge=1, description="页码")
-    page_size: int = Field(20, ge=1, le=100, description="每页数量")
-    role: Optional[UserRole] = Field(None, description="用户角色过滤")
-    status: Optional[UserStatus] = Field(None, description="用户状态过滤")
-    search: Optional[str] = Field(None, description="搜索关键词")
-    organization_id: Optional[str] = Field(None, description="机构ID过滤")
-    sort_by: str = Field("created_time", description="排序字段")
-    sort_order: str = Field("desc", description="排序方式")
+# class UserListQuery(BaseModel):
+#     """用户列表查询参数 - 已废弃，改用直接参数"""
+#     page: int = Field(1, ge=1, description="页码")
+#     page_size: int = Field(20, ge=1, le=100, description="每页数量")
+#     role: Optional[UserRole] = Field(None, description="用户角色过滤")
+#     status: Optional[UserStatus] = Field(None, description="用户状态过滤")
+#     search: Optional[str] = Field(None, description="搜索关键词")
+#     organization_id: Optional[str] = Field(None, description="机构ID过滤")
+#     sort_by: str = Field("created_time", description="排序字段")
+#     sort_order: str = Field("desc", description="排序方式")
 
 
 class UserCreateRequest(BaseModel):
@@ -89,15 +90,15 @@ class UserResponseModel(BaseModel):
     user_id: str
     user_name: str
     user_email: str
-    user_full_name: Optional[str]
+    user_full_name: Optional[str] = None
     user_role: UserRole
     user_status: UserStatus
-    organization_id: Optional[str]
-    organization_name: Optional[str]
-    user_is_verified: bool
-    user_login_count: int
-    user_last_login_time: Optional[datetime]
-    user_last_activity: Optional[datetime]
+    organization_id: Optional[str] = None
+    organization_name: Optional[str] = None
+    user_is_verified: bool = False
+    user_login_count: int = 0
+    user_last_login_time: Optional[datetime] = None
+    user_last_activity: Optional[datetime] = None
     created_time: datetime
     updated_time: datetime
 
@@ -150,72 +151,177 @@ class TeachingAssignmentRequest(BaseModel):
 # 用户管理接口
 # =============================================================================
 
-@router.get("/users", response_model=PageResponseModel)
-async def get_users(
-    query: UserListQuery = Depends(),
+@router.get("/users/test", response_model=Dict[str, Any])
+async def get_users_test(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    search: Optional[str] = Query(None, description="搜索关键词"),
+    role: Optional[str] = Query(None, description="用户角色过滤"),
+    status: Optional[str] = Query(None, description="用户状态过滤"),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
+):
+    """测试用户列表API"""
+    try:
+        # 最简单的查询
+        query = select(ConfigUser).order_by(desc(ConfigUser.created_time))
+        result = await db.execute(query)
+        users = result.scalars().all()
+
+        return {
+            "success": True,
+            "message": "测试成功",
+            "data": {
+                "total": len(users),
+                "users": [
+                    {
+                        "user_id": u.user_id,
+                        "user_name": u.user_name,
+                        "user_email": u.user_email,
+                        "user_role": u.user_role.value,
+                        "user_status": u.user_status.value
+                    } for u in users[:5]  # 只返回前5个
+                ]
+            }
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@router.get("/users", response_model=ResponseModel)
+async def get_users(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    search: Optional[str] = Query(None, description="搜索关键词"),
+    role: Optional[str] = Query(None, description="用户角色过滤"),
+    status: Optional[str] = Query(None, description="用户状态过滤"),
+    organization_id: Optional[str] = Query(None, description="机构ID过滤"),
+    sort_by: str = Query("created_time", description="排序字段"),
+    sort_order: str = Query("desc", description="排序方式"),
+    current_user: ConfigUser = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
 ):
     """获取用户列表"""
-    # 构建查询
-    base_query = db.query(ConfigUser).join(
-        ConfigOrganization, ConfigUser.organization_id == ConfigOrganization.organization_id, isouter=True
-    )
+    try:
+        # 构建查询
+        base_query = select(ConfigUser)
 
-    # 应用过滤条件
-    if query.role:
-        base_query = base_query.filter(ConfigUser.user_role == query.role)
+        # 应用过滤条件
+        if role and role.strip():
+            try:
+                role_enum = UserRole(role.strip())
+                base_query = base_query.where(ConfigUser.user_role == role_enum)
+            except ValueError:
+                pass  # 忽略无效的角色值
 
-    if query.status:
-        base_query = base_query.filter(ConfigUser.user_status == query.status)
+        if status and status.strip():
+            try:
+                status_enum = UserStatus(status.strip())
+                base_query = base_query.where(ConfigUser.user_status == status_enum)
+            except ValueError:
+                pass  # 忽略无效的状态值
 
-    if query.organization_id:
-        base_query = base_query.filter(ConfigUser.organization_id == query.organization_id)
+        if organization_id and organization_id.strip():
+            base_query = base_query.where(ConfigUser.organization_id == organization_id.strip())
 
-    if query.search:
-        search_pattern = f"%{query.search}%"
-        base_query = base_query.filter(
-            or_(
-                ConfigUser.user_name.like(search_pattern),
-                ConfigUser.user_email.like(search_pattern),
-                ConfigUser.user_full_name.like(search_pattern)
+        if search and search.strip():
+            search_pattern = f"%{search.strip()}%"
+            base_query = base_query.where(
+                or_(
+                    ConfigUser.user_name.like(search_pattern),
+                    ConfigUser.user_email.like(search_pattern),
+                    ConfigUser.user_full_name.like(search_pattern)
+                )
             )
+
+        # 排序
+        sort_column = getattr(ConfigUser, sort_by, ConfigUser.created_time)
+        if sort_order == "asc":
+            base_query = base_query.order_by(asc(sort_column))
+        else:
+            base_query = base_query.order_by(desc(sort_column))
+
+        # 计算总数 (简化)
+        count_query = select(func.count(ConfigUser.user_id))
+        if role and role.strip():
+            try:
+                role_enum = UserRole(role.strip())
+                count_query = count_query.where(ConfigUser.user_role == role_enum)
+            except ValueError:
+                pass
+        if status and status.strip():
+            try:
+                status_enum = UserStatus(status.strip())
+                count_query = count_query.where(ConfigUser.user_status == status_enum)
+            except ValueError:
+                pass
+        if organization_id and organization_id.strip():
+            count_query = count_query.where(ConfigUser.organization_id == organization_id.strip())
+        if search and search.strip():
+            search_pattern = f"%{search.strip()}%"
+            count_query = count_query.where(
+                or_(
+                    ConfigUser.user_name.like(search_pattern),
+                    ConfigUser.user_email.like(search_pattern),
+                    ConfigUser.user_full_name.like(search_pattern)
+                )
+            )
+
+        total_result = await db.execute(count_query)
+        total = total_result.scalar()
+
+        # 分页查询
+        offset = (page - 1) * page_size
+        paginated_query = base_query.offset(offset).limit(page_size)
+        result = await db.execute(paginated_query)
+        users_data = result.scalars().all()
+
+        # 组装响应数据
+        items = []
+        for user in users_data:
+            user_dict = {
+                "user_id": user.user_id,
+                "user_name": user.user_name,
+                "user_email": user.user_email,
+                "user_full_name": user.user_full_name,
+                "user_role": user.user_role.value,  # 转换枚举为字符串
+                "user_status": user.user_status.value,  # 转换枚举为字符串
+                "organization_id": user.organization_id,
+                "organization_name": None,  # 暂时不获取机构名称
+                "user_is_verified": user.user_is_verified,
+                "user_login_count": user.user_login_count,
+                "user_last_login_time": user.user_last_login_time.isoformat() if user.user_last_login_time else None,
+                "user_last_activity": user.user_last_activity.isoformat() if user.user_last_activity else None,
+                "created_time": user.created_time.isoformat(),
+                "updated_time": user.updated_time.isoformat()
+            }
+            items.append(user_dict)
+
+        page_response = {
+            "items": items,
+            "total": total,
+            "page": page,
+            "size": page_size,
+            "pages": (total + page_size - 1) // page_size
+        }
+
+        return ResponseModel(
+            success=True,
+            message="获取用户列表成功",
+            data=page_response
         )
-
-    # 排序
-    sort_column = getattr(ConfigUser, query.sort_by, ConfigUser.created_time)
-    if query.sort_order == "asc":
-        base_query = base_query.order_by(asc(sort_column))
-    else:
-        base_query = base_query.order_by(desc(sort_column))
-
-    # 分页
-    total = base_query.count()
-    offset = (query.page - 1) * query.page_size
-    users = base_query.offset(offset).limit(query.page_size).all()
-
-    # 组装响应数据
-    items = []
-    for user in users:
-        user_data = UserResponseModel.model_validate(user)
-        if user.organization:
-            user_data.organization_name = user.organization.name
-        items.append(user_data)
-
-    return PageResponseModel(
-        items=items,
-        total=total,
-        page=query.page,
-        page_size=query.page_size,
-        total_pages=(total + query.page_size - 1) // query.page_size
-    )
+    except Exception as e:
+        logger.error(f"获取用户列表失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取用户列表失败: {str(e)}")
 
 
 @router.post("/users", response_model=ResponseModel)
 async def create_user(
     request: UserCreateRequest,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """创建用户"""
     from app.services.auth_service import hash_password
@@ -282,7 +388,7 @@ async def update_user(
     user_id: str,
     request: UserUpdateRequest,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """更新用户信息"""
     user = db.query(ConfigUser).filter(ConfigUser.user_id == user_id).first()
@@ -346,7 +452,7 @@ async def reset_user_password(
     user_id: str,
     request: PasswordResetRequest,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """重置用户密码"""
     from app.services.auth_service import hash_password
@@ -388,7 +494,7 @@ async def reset_user_password(
 async def delete_user(
     user_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """删除用户（软删除）"""
     user = db.query(ConfigUser).filter(ConfigUser.user_id == user_id).first()
@@ -433,7 +539,7 @@ async def get_user_login_logs(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取用户登录日志"""
     # 验证用户存在
@@ -464,8 +570,8 @@ async def get_user_login_logs(
         } for log in logs],
         total=total,
         page=page,
-        page_size=page_size,
-        total_pages=(total + page_size - 1) // page_size
+        size=page_size,
+        pages=(total + page_size - 1) // page_size
     )
 
 
@@ -476,139 +582,240 @@ async def get_user_login_logs(
 @router.get("/stats", response_model=SystemStatsResponse)
 async def get_system_stats(
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取系统统计信息"""
-    # 用户统计
-    total_users = db.query(ConfigUser).filter(ConfigUser.user_status == UserStatus.ACTIVE).count()
-    total_teachers = db.query(ConfigUser).filter(
-        and_(ConfigUser.user_role == UserRole.TEACHER, ConfigUser.user_status == UserStatus.ACTIVE)
-    ).count()
-    total_students = db.query(ConfigUser).filter(
-        and_(ConfigUser.user_role == UserRole.STUDENT, ConfigUser.user_status == UserStatus.ACTIVE)
-    ).count()
-    total_admins = db.query(ConfigUser).filter(
-        and_(ConfigUser.user_role == UserRole.ADMIN, ConfigUser.user_status == UserStatus.ACTIVE)
-    ).count()
-
-    # 其他统计
-    total_classes = db.query(Class).filter(Class.is_active == True).count()
-    total_questions = db.query(Question).filter(Question.is_active == True).count()
-    total_homeworks = db.query(Homework).count()
-
-    # 活跃用户统计
-    today = datetime.now().date()
-    week_ago = today - timedelta(days=7)
-
-    active_users_today = db.query(ConfigUser).filter(
-        and_(
-            ConfigUser.user_last_activity >= today,
-            ConfigUser.user_status == UserStatus.ACTIVE
+    try:
+        # 用户统计
+        total_users_result = await db.execute(
+            select(func.count(ConfigUser.user_id)).filter(ConfigUser.user_status == UserStatus.ACTIVE)
         )
-    ).count()
+        total_users = total_users_result.scalar() or 0
 
-    active_users_week = db.query(ConfigUser).filter(
-        and_(
-            ConfigUser.user_last_activity >= week_ago,
-            ConfigUser.user_status == UserStatus.ACTIVE
+        total_teachers_result = await db.execute(
+            select(func.count(ConfigUser.user_id)).filter(
+                and_(ConfigUser.user_role == UserRole.TEACHER, ConfigUser.user_status == UserStatus.ACTIVE)
+            )
         )
-    ).count()
+        total_teachers = total_teachers_result.scalar() or 0
 
-    # 最近登录记录
-    recent_logins = db.query(LogLogin).filter(
-        LogLogin.is_success == True
-    ).order_by(desc(LogLogin.logged_in_at)).limit(10).all()
+        total_students_result = await db.execute(
+            select(func.count(ConfigUser.user_id)).filter(
+                and_(ConfigUser.user_role == UserRole.STUDENT, ConfigUser.user_status == UserStatus.ACTIVE)
+            )
+        )
+        total_students = total_students_result.scalar() or 0
 
-    recent_login_data = [{
-        "username": log.username,
-        "ip_address": log.ip_address,
-        "logged_in_at": log.logged_in_at,
-        "user_agent": log.user_agent[:100] if log.user_agent else None
-    } for log in recent_logins]
+        total_admins_result = await db.execute(
+            select(func.count(ConfigUser.user_id)).filter(
+                and_(ConfigUser.user_role == UserRole.ADMIN, ConfigUser.user_status == UserStatus.ACTIVE)
+            )
+        )
+        total_admins = total_admins_result.scalar() or 0
 
-    return SystemStatsResponse(
-        total_users=total_users,
-        total_teachers=total_teachers,
-        total_students=total_students,
-        total_admins=total_admins,
-        total_classes=total_classes,
-        total_questions=total_questions,
-        total_homeworks=total_homeworks,
-        active_users_today=active_users_today,
-        active_users_week=active_users_week,
-        recent_logins=recent_login_data
-    )
+        # 其他统计 - 可能表不存在，给默认值
+        try:
+            total_classes_result = await db.execute(
+                select(func.count(Class.id)).filter(Class.is_active == True)
+            )
+            total_classes = total_classes_result.scalar() or 0
+        except Exception:
+            total_classes = 0
+
+        try:
+            total_questions_result = await db.execute(
+                select(func.count(Question.id)).filter(Question.is_active == True)
+            )
+            total_questions = total_questions_result.scalar() or 0
+        except Exception:
+            total_questions = 0
+
+        try:
+            total_homeworks_result = await db.execute(select(func.count(Homework.id)))
+            total_homeworks = total_homeworks_result.scalar() or 0
+        except Exception:
+            total_homeworks = 0
+
+        # 活跃用户统计
+        today = datetime.now().date()
+        week_ago = today - timedelta(days=7)
+
+        try:
+            active_users_today_result = await db.execute(
+                select(func.count(ConfigUser.user_id)).filter(
+                    and_(
+                        ConfigUser.user_last_activity >= today,
+                        ConfigUser.user_status == UserStatus.ACTIVE
+                    )
+                )
+            )
+            active_users_today = active_users_today_result.scalar() or 0
+        except Exception:
+            active_users_today = 0
+
+        try:
+            active_users_week_result = await db.execute(
+                select(func.count(ConfigUser.user_id)).filter(
+                    and_(
+                        ConfigUser.user_last_activity >= week_ago,
+                        ConfigUser.user_status == UserStatus.ACTIVE
+                    )
+                )
+            )
+            active_users_week = active_users_week_result.scalar() or 0
+        except Exception:
+            active_users_week = 0
+
+        # 最近登录记录
+        try:
+            recent_logins_result = await db.execute(
+                select(LogLogin).filter(
+                    LogLogin.is_success == True
+                ).order_by(desc(LogLogin.logged_in_at)).limit(10)
+            )
+            recent_logins = recent_logins_result.scalars().all()
+
+            recent_login_data = [{
+                "username": log.username,
+                "ip_address": log.ip_address,
+                "logged_in_at": log.logged_in_at.isoformat() if log.logged_in_at else None,
+                "user_agent": log.user_agent[:100] if log.user_agent else None
+            } for log in recent_logins]
+        except Exception:
+            recent_login_data = []
+
+        return SystemStatsResponse(
+            total_users=total_users,
+            total_teachers=total_teachers,
+            total_students=total_students,
+            total_admins=total_admins,
+            total_classes=total_classes,
+            total_questions=total_questions,
+            total_homeworks=total_homeworks,
+            active_users_today=active_users_today,
+            active_users_week=active_users_week,
+            recent_logins=recent_login_data
+        )
+    except Exception as e:
+        logger.error(f"获取系统统计信息失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
 
 
 # =============================================================================
 # 班级管理接口
 # =============================================================================
 
-@router.get("/classes", response_model=PageResponseModel)
+@router.get("/classes", response_model=ResponseModel)
 async def get_classes(
-    query: ClassListQuery = Depends(),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    search: str = Query("", description="搜索关键词"),
+    grade_id: str = Query("", description="年级过滤"),
+    organization_id: str = Query("", description="机构过滤"),
+    is_active: str = Query("", description="状态过滤"),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取班级列表"""
-    # 构建查询
-    base_query = db.query(Class).join(
-        Grade, Class.grade_id == Grade.id, isouter=True
-    ).join(
-        ConfigOrganization, Class.organization_id == ConfigOrganization.organization_id, isouter=True
-    )
+    try:
+        # 构建查询
+        from sqlalchemy import select, func, and_, or_, desc
 
-    # 应用过滤条件
-    if query.grade_id:
-        base_query = base_query.filter(Class.grade_id == query.grade_id)
-
-    if query.organization_id:
-        base_query = base_query.filter(Class.organization_id == query.organization_id)
-
-    if query.is_active is not None:
-        base_query = base_query.filter(Class.is_active == query.is_active)
-
-    if query.search:
-        search_pattern = f"%{query.search}%"
-        base_query = base_query.filter(
-            or_(
-                Class.name.like(search_pattern),
-                Class.description.like(search_pattern)
-            )
+        stmt = select(Class).join(
+            Grade, Class.grade_id == Grade.id, isouter=True
+        ).join(
+            ConfigOrganization, Class.organization_id == ConfigOrganization.organization_id, isouter=True
         )
 
-    # 排序
-    base_query = base_query.order_by(desc(Class.created_time))
+        # 应用过滤条件
+        conditions = []
+        if grade_id:
+            conditions.append(Class.grade_id == grade_id)
 
-    # 分页
-    total = base_query.count()
-    offset = (query.page - 1) * query.page_size
-    classes = base_query.offset(offset).limit(query.page_size).all()
+        if organization_id:
+            conditions.append(Class.organization_id == organization_id)
+
+        if is_active:
+            try:
+                is_active_bool = is_active.lower() in ['true', '1', 'yes']
+                conditions.append(Class.is_active == is_active_bool)
+            except Exception:
+                pass
+
+        if search:
+            search_pattern = f"%{search}%"
+            conditions.append(
+                or_(
+                    Class.name.like(search_pattern),
+                    Class.description.like(search_pattern)
+                )
+            )
+
+        # 应用所有条件
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+
+        # 排序
+        stmt = stmt.order_by(desc(Class.created_time))
+
+        # 获取总数
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar()
+
+        # 分页
+        offset = (page - 1) * page_size
+        stmt = stmt.offset(offset).limit(page_size)
+
+        # 执行查询
+        result = await db.execute(stmt)
+        classes = result.scalars().all()
+    except Exception as e:
+        logger.error(f"获取班级列表失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取班级列表失败"
+        )
 
     # 组装响应数据
     items = []
     for class_obj in classes:
         # 统计学生数量
-        student_count = db.query(ClassStudent).filter(
+        student_count_stmt = select(func.count(ClassStudent.id)).where(
             ClassStudent.class_id == class_obj.id
-        ).count()
+        )
+        student_count_result = await db.execute(student_count_stmt)
+        student_count = student_count_result.scalar()
 
         # 统计教师数量
-        teacher_count = db.query(Teaching).filter(
+        teacher_count_stmt = select(func.count(Teaching.id)).where(
             and_(
                 Teaching.class_id == class_obj.id,
                 Teaching.is_active == True
             )
-        ).count()
+        )
+        teacher_count_result = await db.execute(teacher_count_stmt)
+        teacher_count = teacher_count_result.scalar()
+
+        # 获取年级和机构信息，避免懒加载
+        grade_name = None
+        if class_obj.grade_id:
+            grade_result = await db.execute(select(Grade.name).where(Grade.id == class_obj.grade_id))
+            grade_name = grade_result.scalar()
+
+        organization_name = None
+        if class_obj.organization_id:
+            org_result = await db.execute(select(ConfigOrganization.name).where(ConfigOrganization.organization_id == class_obj.organization_id))
+            organization_name = org_result.scalar()
 
         class_data = {
             "id": class_obj.id,
             "name": class_obj.name,
             "description": class_obj.description,
             "grade_id": class_obj.grade_id,
-            "grade_name": class_obj.grade.name if class_obj.grade else None,
+            "grade_name": grade_name,
             "organization_id": class_obj.organization_id,
-            "organization_name": class_obj.organization.name if class_obj.organization else None,
+            "organization_name": organization_name,
             "max_students": class_obj.max_students,
             "student_count": student_count,
             "teacher_count": teacher_count,
@@ -618,20 +825,22 @@ async def get_classes(
         }
         items.append(class_data)
 
-    return PageResponseModel(
+    page_data = PageResponseModel(
         items=items,
         total=total,
-        page=query.page,
-        page_size=query.page_size,
-        total_pages=(total + query.page_size - 1) // query.page_size
+        page=page,
+        size=page_size,
+        pages=(total + page_size - 1) // page_size
     )
+
+    return ResponseModel(data=page_data, message="获取班级列表成功")
 
 
 @router.post("/classes", response_model=ResponseModel)
 async def create_class(
     request: ClassCreateRequest,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """创建班级"""
     # 验证年级存在性
@@ -687,7 +896,7 @@ async def update_class(
     class_id: str,
     request: ClassCreateRequest,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """更新班级信息"""
     class_obj = db.query(Class).filter(Class.id == class_id).first()
@@ -745,7 +954,7 @@ async def update_class(
 async def delete_class(
     class_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """删除班级（软删除）"""
     class_obj = db.query(Class).filter(Class.id == class_id).first()
@@ -792,7 +1001,7 @@ async def get_class_students(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取班级学生列表"""
     # 验证班级存在
@@ -828,8 +1037,8 @@ async def get_class_students(
         items=items,
         total=total,
         page=page,
-        page_size=page_size,
-        total_pages=(total + page_size - 1) // page_size
+        size=page_size,
+        pages=(total + page_size - 1) // page_size
     )
 
 
@@ -838,7 +1047,7 @@ async def add_student_to_class(
     class_id: str,
     student_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """添加学生到班级"""
     # 验证班级存在
@@ -913,7 +1122,7 @@ async def remove_student_from_class(
     class_id: str,
     student_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """从班级移除学生"""
     # 查找班级学生关系
@@ -957,7 +1166,7 @@ async def remove_student_from_class(
 async def create_teaching_assignment(
     request: TeachingAssignmentRequest,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """创建教师授课安排"""
     # 验证教师存在且为教师角色
@@ -1048,77 +1257,129 @@ class HomeworkListQuery(BaseModel):
     creator_id: Optional[str] = Field(None, description="创建者过滤")
 
 
-@router.get("/homeworks", response_model=PageResponseModel)
+@router.get("/homeworks", response_model=ResponseModel)
 async def get_homeworks(
-    query: HomeworkListQuery = Depends(),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    search: str = Query("", description="搜索关键词"),
+    class_id: str = Query("", description="班级过滤"),
+    subject_id: str = Query("", description="学科过滤"),
+    is_published: str = Query("", description="发布状态过滤"),
+    creator_id: str = Query("", description="创建者过滤"),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取作业列表"""
-    # 构建查询
-    base_query = db.query(Homework).join(
-        Class, Homework.class_id == Class.id, isouter=True
-    ).join(
-        Subject, Homework.subject_id == Subject.id, isouter=True
-    ).join(
-        ConfigUser, Homework.creator_teacher_id == ConfigUser.user_id, isouter=True
-    )
+    try:
+        # 构建查询
+        from sqlalchemy import select, func, and_, or_, desc
 
-    # 应用过滤条件
-    if query.class_id:
-        base_query = base_query.filter(Homework.class_id == query.class_id)
-
-    if query.subject_id:
-        base_query = base_query.filter(Homework.subject_id == query.subject_id)
-
-    if query.is_published is not None:
-        base_query = base_query.filter(Homework.is_published == query.is_published)
-
-    if query.creator_id:
-        base_query = base_query.filter(Homework.creator_teacher_id == query.creator_id)
-
-    if query.search:
-        search_pattern = f"%{query.search}%"
-        base_query = base_query.filter(
-            or_(
-                Homework.title.like(search_pattern),
-                Homework.description.like(search_pattern)
-            )
+        stmt = select(Homework).join(
+            Class, Homework.class_id == Class.id, isouter=True
+        ).join(
+            Subject, Homework.subject_id == Subject.id, isouter=True
+        ).join(
+            ConfigUser, Homework.creator_teacher_id == ConfigUser.user_id, isouter=True
         )
 
-    # 排序
-    base_query = base_query.order_by(desc(Homework.created_time))
+        # 应用过滤条件
+        conditions = []
+        if class_id:
+            conditions.append(Homework.class_id == class_id)
 
-    # 分页
-    total = base_query.count()
-    offset = (query.page - 1) * query.page_size
-    homeworks = base_query.offset(offset).limit(query.page_size).all()
+        if subject_id:
+            conditions.append(Homework.subject_id == subject_id)
+
+        if is_published:
+            try:
+                is_published_bool = is_published.lower() in ['true', '1', 'yes']
+                conditions.append(Homework.is_published == is_published_bool)
+            except Exception:
+                pass
+
+        if creator_id:
+            conditions.append(Homework.creator_teacher_id == creator_id)
+
+        if search:
+            search_pattern = f"%{search}%"
+            conditions.append(
+                or_(
+                    Homework.title.like(search_pattern),
+                    Homework.description.like(search_pattern)
+                )
+            )
+
+        # 应用所有条件
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+
+        # 排序
+        stmt = stmt.order_by(desc(Homework.created_time))
+
+        # 获取总数
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar()
+
+        # 分页
+        offset = (page - 1) * page_size
+        stmt = stmt.offset(offset).limit(page_size)
+
+        # 执行查询
+        result = await db.execute(stmt)
+        homeworks = result.scalars().all()
+    except Exception as e:
+        logger.error(f"获取作业列表失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取作业列表失败"
+        )
 
     # 组装响应数据
     items = []
     for homework in homeworks:
         # 统计学生完成情况
-        total_students = db.query(StudentHomework).filter(
+        total_students_stmt = select(func.count(StudentHomework.id)).where(
             StudentHomework.homework_id == homework.id
-        ).count()
+        )
+        total_students_result = await db.execute(total_students_stmt)
+        total_students = total_students_result.scalar()
 
-        completed_students = db.query(StudentHomework).filter(
+        completed_students_stmt = select(func.count(StudentHomework.id)).where(
             and_(
                 StudentHomework.homework_id == homework.id,
                 StudentHomework.status == "completed"
             )
-        ).count()
+        )
+        completed_students_result = await db.execute(completed_students_stmt)
+        completed_students = completed_students_result.scalar()
+
+        # 获取班级、学科和创建者信息，避免懒加载
+        class_name = None
+        if homework.class_id:
+            class_result = await db.execute(select(Class.name).where(Class.id == homework.class_id))
+            class_name = class_result.scalar()
+
+        subject_name = None
+        if homework.subject_id:
+            subject_result = await db.execute(select(Subject.name).where(Subject.id == homework.subject_id))
+            subject_name = subject_result.scalar()
+
+        creator_name = None
+        if homework.creator_teacher_id:
+            creator_result = await db.execute(select(ConfigUser.user_full_name).where(ConfigUser.user_id == homework.creator_teacher_id))
+            creator_name = creator_result.scalar()
 
         homework_data = {
             "id": homework.id,
             "title": homework.title,
             "description": homework.description,
             "class_id": homework.class_id,
-            "class_name": homework.class_obj.name if homework.class_obj else None,
+            "class_name": class_name,
             "subject_id": homework.subject_id,
-            "subject_name": homework.subject.name if homework.subject else None,
+            "subject_name": subject_name,
             "creator_teacher_id": homework.creator_teacher_id,
-            "creator_name": homework.creator_teacher.user_full_name if homework.creator_teacher else None,
+            "creator_name": creator_name,
             "question_count": len(homework.question_ids) if homework.question_ids else 0,
             "total_students": total_students,
             "completed_students": completed_students,
@@ -1131,13 +1392,15 @@ async def get_homeworks(
         }
         items.append(homework_data)
 
-    return PageResponseModel(
+    page_data = PageResponseModel(
         items=items,
         total=total,
-        page=query.page,
-        page_size=query.page_size,
-        total_pages=(total + query.page_size - 1) // query.page_size
+        page=page,
+        size=page_size,
+        pages=(total + page_size - 1) // page_size
     )
+
+    return ResponseModel(data=page_data, message="获取作业列表成功")
 
 
 @router.get("/homeworks/{homework_id}/students")
@@ -1146,7 +1409,7 @@ async def get_homework_students(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取作业学生完成情况"""
     # 验证作业存在
@@ -1188,8 +1451,8 @@ async def get_homework_students(
         items=items,
         total=total,
         page=page,
-        page_size=page_size,
-        total_pages=(total + page_size - 1) // page_size
+        size=page_size,
+        pages=(total + page_size - 1) // page_size
     )
 
 
@@ -1197,7 +1460,7 @@ async def get_homework_students(
 async def publish_homework(
     homework_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """发布作业"""
     homework = db.query(Homework).filter(Homework.id == homework_id).first()
@@ -1237,7 +1500,7 @@ async def publish_homework(
 async def unpublish_homework(
     homework_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """撤回作业"""
     homework = db.query(Homework).filter(Homework.id == homework_id).first()
@@ -1292,63 +1555,109 @@ class QuestionListQuery(BaseModel):
     min_quality_score: Optional[int] = Field(None, ge=1, le=10, description="最低质量评分")
 
 
-@router.get("/questions", response_model=PageResponseModel)
+@router.get("/questions", response_model=ResponseModel)
 async def get_questions(
-    query: QuestionListQuery = Depends(),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    search: str = Query("", description="搜索关键词"),
+    subject: str = Query("", description="学科过滤"),
+    question_type: str = Query("", description="题目类型过滤"),
+    difficulty: str = Query("", description="难度过滤"),
+    grade_level: str = Query("", description="年级过滤"),
+    creator_id: str = Query("", description="创建者过滤"),
+    is_public: str = Query("", description="公开状态过滤"),
+    is_active: str = Query("", description="激活状态过滤"),
+    min_quality_score: int = Query(None, ge=1, le=10, description="最低质量评分"),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取题目列表"""
-    # 构建查询
-    base_query = db.query(Question).join(
-        ConfigUser, Question.creator_id == ConfigUser.user_id, isouter=True
-    )
+    try:
+        # 构建查询
+        from sqlalchemy import select, func, and_, or_, desc
 
-    # 应用过滤条件
-    if query.subject:
-        base_query = base_query.filter(Question.subject == query.subject)
-
-    if query.question_type:
-        base_query = base_query.filter(Question.question_type == query.question_type)
-
-    if query.difficulty:
-        base_query = base_query.filter(Question.difficulty == query.difficulty)
-
-    if query.grade_level:
-        base_query = base_query.filter(Question.grade_level == query.grade_level)
-
-    if query.creator_id:
-        base_query = base_query.filter(Question.creator_id == query.creator_id)
-
-    if query.is_public is not None:
-        base_query = base_query.filter(Question.is_public == query.is_public)
-
-    if query.is_active is not None:
-        base_query = base_query.filter(Question.is_active == query.is_active)
-
-    if query.min_quality_score:
-        base_query = base_query.filter(Question.quality_score >= query.min_quality_score)
-
-    if query.search:
-        search_pattern = f"%{query.search}%"
-        base_query = base_query.filter(
-            or_(
-                Question.title.like(search_pattern),
-                Question.content.like(search_pattern)
-            )
+        stmt = select(Question).join(
+            ConfigUser, Question.creator_id == ConfigUser.user_id, isouter=True
         )
 
-    # 排序
-    base_query = base_query.order_by(desc(Question.created_time))
+        # 应用过滤条件
+        conditions = []
+        if subject:
+            conditions.append(Question.subject == subject)
 
-    # 分页
-    total = base_query.count()
-    offset = (query.page - 1) * query.page_size
-    questions = base_query.offset(offset).limit(query.page_size).all()
+        if question_type:
+            conditions.append(Question.question_type == question_type)
+
+        if difficulty:
+            conditions.append(Question.difficulty == difficulty)
+
+        if grade_level:
+            conditions.append(Question.grade_level == grade_level)
+
+        if creator_id:
+            conditions.append(Question.creator_id == creator_id)
+
+        if is_public:
+            try:
+                is_public_bool = is_public.lower() in ['true', '1', 'yes']
+                conditions.append(Question.is_public == is_public_bool)
+            except Exception:
+                pass
+
+        if is_active:
+            try:
+                is_active_bool = is_active.lower() in ['true', '1', 'yes']
+                conditions.append(Question.is_active == is_active_bool)
+            except Exception:
+                pass
+
+        if min_quality_score:
+            conditions.append(Question.quality_score >= min_quality_score)
+
+        if search:
+            search_pattern = f"%{search}%"
+            conditions.append(
+                or_(
+                    Question.title.like(search_pattern),
+                    Question.content.like(search_pattern)
+                )
+            )
+
+        # 应用所有条件
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+
+        # 排序
+        stmt = stmt.order_by(desc(Question.created_time))
+
+        # 获取总数
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar()
+
+        # 分页
+        offset = (page - 1) * page_size
+        stmt = stmt.offset(offset).limit(page_size)
+
+        # 执行查询
+        result = await db.execute(stmt)
+        questions = result.scalars().all()
+    except Exception as e:
+        logger.error(f"获取题目列表失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取题目列表失败"
+        )
 
     # 组装响应数据
     items = []
     for question in questions:
+        # 获取创建者信息，避免懒加载
+        creator_name = None
+        if question.creator_id:
+            creator_result = await db.execute(select(ConfigUser.user_full_name).where(ConfigUser.user_id == question.creator_id))
+            creator_name = creator_result.scalar()
+
         question_data = {
             "id": question.id,
             "title": question.title,
@@ -1358,7 +1667,7 @@ async def get_questions(
             "difficulty": question.difficulty,
             "grade_level": question.grade_level,
             "creator_id": question.creator_id,
-            "creator_name": question.creator.user_full_name if question.creator else None,
+            "creator_name": creator_name,
             "quality_score": question.quality_score,
             "processing_cost": question.processing_cost,
             "has_image": question.has_image,
@@ -1372,20 +1681,22 @@ async def get_questions(
         }
         items.append(question_data)
 
-    return PageResponseModel(
+    page_data = PageResponseModel(
         items=items,
         total=total,
-        page=query.page,
-        page_size=query.page_size,
-        total_pages=(total + query.page_size - 1) // query.page_size
+        page=page,
+        size=page_size,
+        pages=(total + page_size - 1) // page_size
     )
+
+    return ResponseModel(data=page_data, message="获取题目列表成功")
 
 
 @router.get("/questions/{question_id}", response_model=ResponseModel)
 async def get_question_detail(
     question_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取题目详情"""
     question = db.query(Question).filter(Question.id == question_id).first()
@@ -1433,7 +1744,7 @@ async def update_question_status(
     question_id: str,
     is_active: bool = Query(..., description="激活状态"),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """更新题目状态"""
     question = db.query(Question).filter(Question.id == question_id).first()
@@ -1469,7 +1780,7 @@ async def update_question_publicity(
     question_id: str,
     is_public: bool = Query(..., description="公开状态"),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """更新题目公开状态"""
     question = db.query(Question).filter(Question.id == question_id).first()
@@ -1504,7 +1815,7 @@ async def update_question_publicity(
 async def delete_question(
     question_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """删除题目（软删除）"""
     question = db.query(Question).filter(Question.id == question_id).first()
@@ -1570,39 +1881,69 @@ class SystemSettingListQuery(BaseModel):
     is_public: Optional[bool] = Field(None, description="公开状态过滤")
 
 
-@router.get("/system-settings", response_model=PageResponseModel)
+@router.get("/system-settings", response_model=ResponseModel)
 async def get_system_settings(
-    query: SystemSettingListQuery = Depends(),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    category: str = Query("", description="分类过滤"),
+    search: str = Query("", description="搜索关键词"),
+    is_public: str = Query("", description="公开状态过滤"),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取系统设置列表"""
-    # 构建查询
-    base_query = db.query(SystemSettings)
+    try:
+        # 构建查询
+        from sqlalchemy import select, func, and_, or_, desc
 
-    # 应用过滤条件
-    if query.category:
-        base_query = base_query.filter(SystemSettings.category == query.category)
+        stmt = select(SystemSettings)
 
-    if query.is_public is not None:
-        base_query = base_query.filter(SystemSettings.is_public == query.is_public)
+        # 应用过滤条件
+        conditions = []
+        if category:
+            conditions.append(SystemSettings.category == category)
 
-    if query.search:
-        search_pattern = f"%{query.search}%"
-        base_query = base_query.filter(
-            or_(
-                SystemSettings.setting_key.like(search_pattern),
-                SystemSettings.description.like(search_pattern)
+        if is_public:
+            try:
+                is_public_bool = is_public.lower() in ['true', '1', 'yes']
+                conditions.append(SystemSettings.is_public == is_public_bool)
+            except Exception:
+                pass
+
+        if search:
+            search_pattern = f"%{search}%"
+            conditions.append(
+                or_(
+                    SystemSettings.setting_key.like(search_pattern),
+                    SystemSettings.description.like(search_pattern)
+                )
             )
+
+        # 应用所有条件
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+
+        # 排序
+        stmt = stmt.order_by(SystemSettings.category, SystemSettings.setting_key)
+
+        # 获取总数
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar()
+
+        # 分页
+        offset = (page - 1) * page_size
+        stmt = stmt.offset(offset).limit(page_size)
+
+        # 执行查询
+        result = await db.execute(stmt)
+        settings = result.scalars().all()
+    except Exception as e:
+        logger.error(f"获取系统设置列表失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取系统设置列表失败"
         )
-
-    # 排序
-    base_query = base_query.order_by(SystemSettings.category, SystemSettings.setting_key)
-
-    # 分页
-    total = base_query.count()
-    offset = (query.page - 1) * query.page_size
-    settings = base_query.offset(offset).limit(query.page_size).all()
 
     # 组装响应数据
     items = []
@@ -1622,19 +1963,21 @@ async def get_system_settings(
         }
         items.append(setting_data)
 
-    return PageResponseModel(
+    page_data = PageResponseModel(
         items=items,
         total=total,
-        page=query.page,
-        page_size=query.page_size,
-        total_pages=(total + query.page_size - 1) // query.page_size
+        page=page,
+        size=page_size,
+        pages=(total + page_size - 1) // page_size
     )
+
+    return ResponseModel(data=page_data, message="获取系统设置列表成功")
 
 
 @router.get("/system-settings/categories")
 async def get_setting_categories(
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取设置分类列表"""
     categories = db.query(SystemSettings.category).distinct().all()
@@ -1645,7 +1988,7 @@ async def get_setting_categories(
 async def create_system_setting(
     request: SystemSettingRequest,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """创建系统设置"""
     # 检查是否已存在相同的设置
@@ -1704,7 +2047,7 @@ async def update_system_setting(
     system_id: str,
     request: SystemSettingRequest,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """更新系统设置"""
     setting = db.query(SystemSettings).filter(SystemSettings.system_id == system_id).first()
@@ -1768,7 +2111,7 @@ async def update_system_setting(
 async def delete_system_setting(
     system_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """删除系统设置"""
     setting = db.query(SystemSettings).filter(SystemSettings.system_id == system_id).first()
@@ -1818,7 +2161,7 @@ async def get_permissions(
     category: Optional[str] = Query(None, description="分类过滤"),
     search: Optional[str] = Query(None, description="搜索关键词"),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取权限列表"""
     # 构建查询
@@ -1868,8 +2211,8 @@ async def get_permissions(
         items=items,
         total=total,
         page=page,
-        page_size=page_size,
-        total_pages=(total + page_size - 1) // page_size
+        size=page_size,
+        pages=(total + page_size - 1) // page_size
     )
 
 
@@ -1877,7 +2220,7 @@ async def get_permissions(
 async def create_permission(
     request: PermissionRequest,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """创建权限"""
     # 检查权限代码是否已存在
@@ -1924,7 +2267,7 @@ async def create_permission(
 async def get_role_permissions(
     role: UserRole,
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取角色权限"""
     role_permissions = db.query(ConfigRolePermission).join(
@@ -1951,7 +2294,7 @@ async def assign_permission_to_role(
     permission_id: str,
     is_granted: bool = Query(True, description="是否授予权限"),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """为角色分配权限"""
     # 验证权限存在
@@ -2028,7 +2371,7 @@ class LearningAnalyticsResponse(BaseModel):
 async def get_analytics_overview(
     time_range: AnalyticsTimeRange = Depends(),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取数据分析概览"""
     # 设置默认时间范围
@@ -2170,7 +2513,7 @@ async def get_analytics_overview(
 async def get_user_analytics(
     time_range: AnalyticsTimeRange = Depends(),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取用户数据分析"""
     # 设置默认时间范围
@@ -2268,7 +2611,7 @@ async def get_user_analytics(
 async def get_content_analytics(
     time_range: AnalyticsTimeRange = Depends(),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """获取内容数据分析"""
     # 设置默认时间范围
@@ -2392,7 +2735,7 @@ async def export_analytics_data(
     format: str = Query("csv", pattern="^(csv|excel|json)$", description="导出格式"),
     time_range: AnalyticsTimeRange = Depends(),
     current_user: ConfigUser = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """导出分析数据"""
     from io import StringIO, BytesIO

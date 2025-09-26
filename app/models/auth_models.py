@@ -8,8 +8,8 @@ from uuid import uuid4
 from enum import Enum
 
 from sqlalchemy import (
-    Column, String, DateTime, JSON, Text, Boolean, Integer, 
-    ForeignKey, Float, func, Enum as SQLEnum
+    Column, String, DateTime, JSON, Text, Boolean, Integer,
+    ForeignKey, Float, func, Enum as SQLEnum, UniqueConstraint
 )
 from sqlalchemy.orm import relationship, Mapped
 from app.core.database import Base
@@ -103,37 +103,7 @@ class ConfigUser(Base):
     notes = relationship("Note", back_populates="student")
 
 
-class ConfigOrganization(Base):
-    """机构配置表"""
-    __tablename__ = "config_organizations"
-    
-    organization_id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
-    name: Mapped[str] = Column(String(100), nullable=False, comment="机构名称")
-    code: Mapped[str] = Column(String(20), unique=True, nullable=False, comment="机构代码")
-    description: Mapped[Optional[str]] = Column(Text, comment="机构描述")
-    
-    # 联系信息
-    contact_person: Mapped[Optional[str]] = Column(String(100), comment="联系人")
-    contact_email: Mapped[Optional[str]] = Column(String(255), comment="联系邮箱")
-    contact_phone: Mapped[Optional[str]] = Column(String(20), comment="联系电话")
-    address: Mapped[Optional[str]] = Column(Text, comment="机构地址")
-    
-    # 配置信息
-    settings: Mapped[Optional[dict]] = Column(JSON, comment="机构配置")
-    features: Mapped[Optional[dict]] = Column(JSON, comment="功能开关")
-    limits: Mapped[Optional[dict]] = Column(JSON, comment="使用限制")
-    
-    # 状态
-    is_active: Mapped[bool] = Column(Boolean, default=True, comment="是否激活")
-    license_expires: Mapped[Optional[datetime]] = Column(DateTime, comment="许可证到期时间")
-    
-    # 时间字段 - 保持与API兼容
-    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
-    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
-    
-    # 关系
-    users = relationship("ConfigUser", back_populates="organization")
-    classes = relationship("Class", back_populates="organization")
+# ConfigOrganization已在database_models.py中定义，此处删除重复定义
 
 
 
@@ -213,50 +183,124 @@ class ConfigRolePermission(Base):
 
 
 class SystemSettings(Base):
-    """系统设置表"""
+    """系统设置表 - 动态配置管理"""
     __tablename__ = "system_settings"
-    
+
     system_id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
     category: Mapped[str] = Column(String(50), nullable=False, comment="设置分类")
     setting_key: Mapped[str] = Column(String(100), nullable=False, comment="设置键名")
     setting_value: Mapped[str] = Column(Text, comment="设置值")
     value_type: Mapped[str] = Column(String(20), default="string", comment="值类型")
-    
+
     # 设置属性
+    display_name: Mapped[str] = Column(String(200), nullable=False, comment="显示名称")
     description: Mapped[Optional[str]] = Column(Text, comment="设置描述")
     is_public: Mapped[bool] = Column(Boolean, default=False, comment="是否为公开设置")
     is_encrypted: Mapped[bool] = Column(Boolean, default=False, comment="是否加密存储")
     validation_rule: Mapped[Optional[str]] = Column(Text, comment="验证规则")
-    
+
+    # 配置界面相关
+    input_type: Mapped[str] = Column(String(20), default="text", comment="输入控件类型")
+    options: Mapped[Optional[dict]] = Column(JSON, comment="选项配置")
+    default_value: Mapped[Optional[str]] = Column(Text, comment="默认值")
+    sort_order: Mapped[int] = Column(Integer, default=0, comment="排序")
+
+    # 权限控制
+    required_role: Mapped[str] = Column(String(20), default="admin", comment="所需角色")
+    is_readonly: Mapped[bool] = Column(Boolean, default=False, comment="是否只读")
+    is_active: Mapped[bool] = Column(Boolean, default=True, comment="是否启用")
+
     # 时间字段 - 保持与API兼容
     created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
     updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+
+    # 唯一约束
+    __table_args__ = (UniqueConstraint('category', 'setting_key', name='uq_setting_key'),)
 
 
 class LogAudit(Base):
     """操作审计日志表"""
     __tablename__ = "log_audit"
-    
+
     log_id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
     user_id: Mapped[Optional[str]] = Column(String(36), comment="操作用户ID")
-    
+
     # 操作信息
     action_type: Mapped[str] = Column(String(50), nullable=False, comment="操作类型")
     resource: Mapped[str] = Column(String(100), nullable=False, comment="操作资源")
     resource_id: Mapped[Optional[str]] = Column(String(36), comment="资源ID")
     description: Mapped[str] = Column(Text, nullable=False, comment="操作描述")
-    
+
     # 请求信息
     request_method: Mapped[str] = Column(String(10), comment="HTTP方法")
     request_url: Mapped[str] = Column(String(500), comment="请求URL")
     ip_address: Mapped[str] = Column(String(45), comment="请求IP")
     user_agent: Mapped[Optional[str]] = Column(Text, comment="用户代理")
-    
+
     # 操作详情
     status: Mapped[str] = Column(String(20), nullable=False, comment="操作状态")
     result: Mapped[Optional[dict]] = Column(JSON, comment="操作结果")
     error_message: Mapped[Optional[str]] = Column(Text, comment="错误信息")
-    
+
     # 统一时间字段命名
     action_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="操作时间")
     created_at: Mapped[datetime] = Column(DateTime, default=func.now(), comment="记录创建时间")
+
+
+class SecurityPolicy(Base):
+    """安全策略配置表"""
+    __tablename__ = "config_security_policies"
+
+    policy_id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
+    policy_name: Mapped[str] = Column(String(100), nullable=False, comment="策略名称")
+    policy_type: Mapped[str] = Column(String(50), nullable=False, comment="策略类型")
+
+    # 策略配置
+    config: Mapped[dict] = Column(JSON, nullable=False, comment="策略配置")
+    description: Mapped[Optional[str]] = Column(Text, comment="策略描述")
+
+    # 应用范围
+    applies_to_roles: Mapped[List] = Column(JSON, default=list, comment="适用角色")
+    applies_to_organizations: Mapped[List] = Column(JSON, default=list, comment="适用机构")
+
+    # 策略状态
+    is_active: Mapped[bool] = Column(Boolean, default=True, comment="是否启用")
+    is_system: Mapped[bool] = Column(Boolean, default=False, comment="是否系统策略")
+    priority: Mapped[int] = Column(Integer, default=0, comment="优先级")
+
+    # 创建者
+    created_by: Mapped[str] = Column(String(36), ForeignKey("config_users.user_id"), comment="创建者")
+
+    # 时间字段
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")
+
+    # 关系
+    creator = relationship("ConfigUser")
+
+
+class ConfigNotification(Base):
+    """系统通知配置表"""
+    __tablename__ = "config_notifications"
+
+    notification_id: Mapped[str] = Column(String(36), primary_key=True, default=generate_uuid)
+    event_type: Mapped[str] = Column(String(50), nullable=False, comment="事件类型")
+    notification_title: Mapped[str] = Column(String(200), nullable=False, comment="通知标题")
+    notification_content: Mapped[str] = Column(Text, nullable=False, comment="通知内容")
+
+    # 通知设置
+    notification_methods: Mapped[List] = Column(JSON, default=list, comment="通知方式")
+    target_roles: Mapped[List] = Column(JSON, default=list, comment="目标角色")
+    target_users: Mapped[List] = Column(JSON, default=list, comment="目标用户")
+
+    # 触发条件
+    trigger_conditions: Mapped[dict] = Column(JSON, default=dict, comment="触发条件")
+    frequency_limit: Mapped[Optional[dict]] = Column(JSON, comment="频率限制")
+
+    # 状态
+    is_active: Mapped[bool] = Column(Boolean, default=True, comment="是否启用")
+    is_system: Mapped[bool] = Column(Boolean, default=False, comment="是否系统通知")
+
+    # 时间字段
+    created_time: Mapped[datetime] = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_time: Mapped[datetime] = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")

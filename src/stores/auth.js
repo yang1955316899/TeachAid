@@ -52,6 +52,16 @@ export const useAuthStore = defineStore('auth', {
     // 用户显示信息
     displayName: (state) => {
       return state.user?.user_full_name || state.user?.full_name || state.user?.user_name || state.user?.username || '未知用户'
+    },
+
+    // 完整的用户信息，包含头像
+    userInfo: (state) => {
+      if (!state.user) return null
+
+      return {
+        ...state.user,
+        avatar: state.user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(state.user?.user_full_name || state.user?.user_name || '用户')}&background=3b82f6&color=fff`
+      }
     }
   },
   

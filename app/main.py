@@ -1,7 +1,6 @@
 """
 FastAPI主应用入口
 """
-import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -14,9 +13,9 @@ import uvicorn
 from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.core.redis_client import init_redis, close_redis
-from app.core.security import security_middleware
+# from app.core.security import security_middleware  # 临时屏蔽
 from app.core.error_handler import error_handler
-from app.api import auth, questions, chat, public, classes, homework, prompts, files, rewriter, analytics, profile, taxonomy, teaching, notes, admin, intelligent_tutor
+from app.api import auth, questions, chat, public, classes, homework, prompts, files, rewriter, analytics, profile, taxonomy, teaching, notes, admin, intelligent_tutor, admin_config
 from app.models.pydantic_models import BaseResponse
 
 
@@ -132,35 +131,75 @@ app.add_middleware(
     allowed_hosts=["localhost", "127.0.0.1", "*.teachaid.com"]
 )
 
+# 临时屏蔽安全中间件
+# @app.middleware("http")
+# async def security_middleware_handler(request: Request, call_next):
+#     """安全中间件"""
+#     try:
+#         # 安全检查
+#         security_info = await security_middleware.check_request_security(request)
+
+#         # 处理请求
+#         response = await call_next(request)
+
+#         # 添加安全响应头
+#         security_headers = security_middleware.get_security_headers()
+#         for header, value in security_headers.items():
+#             response.headers[header] = value
+
+#         # 添加安全评分头（仅在调试模式）
+#         if settings.debug:
+#             response.headers['X-Security-Score'] = str(security_info['security_score'])
+
+#         return response
+
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"安全中间件错误: {e}")
+#         return JSONResponse(
+#             status_code=500,
+#             content={"success": False, "message": "服务器内部错误"}
+#         )
+
+
 @app.middleware("http")
-async def security_middleware_handler(request: Request, call_next):
-    """安全中间件"""
+async def error_logging_middleware(request: Request, call_next):
+    """错误日志中间件"""
+    import time
+    import uuid
+
+    # 生成请求ID
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+
+    start_time = time.time()
+
     try:
-        # 安全检查
-        security_info = await security_middleware.check_request_security(request)
-        
-        # 处理请求
         response = await call_next(request)
-        
-        # 添加安全响应头
-        security_headers = security_middleware.get_security_headers()
-        for header, value in security_headers.items():
-            response.headers[header] = value
-        
-        # 添加安全评分头（仅在调试模式）
-        if settings.debug:
-            response.headers['X-Security-Score'] = str(security_info['security_score'])
-        
+
+        # 记录响应时间
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(process_time)
+        response.headers["X-Request-ID"] = request_id
+
+        # 记录慢请求
+        if process_time > 2.0:  # 超过2秒的请求
+            logger.warning(
+                f"慢请求 - ID: {request_id}, URL: {request.url}, "
+                f"方法: {request.method}, 耗时: {process_time:.2f}s"
+            )
+
         return response
-        
-    except HTTPException:
-        raise
+
     except Exception as e:
-        logger.error(f"安全中间件错误: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "message": "服务器内部错误"}
+        # 记录错误请求
+        process_time = time.time() - start_time
+        logger.error(
+            f"请求错误 - ID: {request_id}, URL: {request.url}, "
+            f"方法: {request.method}, 错误: {str(e)}, 耗时: {process_time:.2f}s"
         )
+        raise
 
 
 # 全局异常处理
@@ -194,6 +233,7 @@ app.include_router(teaching.router, prefix="/api")
 app.include_router(notes.router, prefix="/api")
 app.include_router(intelligent_tutor.router)
 app.include_router(admin.router)
+app.include_router(admin_config.router)
 
 
 # 根路径

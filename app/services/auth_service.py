@@ -19,10 +19,11 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.services.token_service import token_service
 from app.models.auth_models import (
-    ConfigUser, ConfigOrganization, LogLogin, 
+    ConfigUser, LogLogin,
     ConfigPermission, ConfigRolePermission, LogAudit,
     UserRole, UserStatus
 )
+from app.models.database_models import ConfigOrganization
 
 
 class AuthService:
@@ -846,21 +847,33 @@ async def get_current_admin(current_user: ConfigUser = Depends(get_current_user)
 
 
 async def get_current_teacher(current_user: ConfigUser = Depends(get_current_user)) -> ConfigUser:
-    """获取当前教师用户"""
+    """获取当前教师用户（需要教师权限）"""
     if current_user.user_role not in [UserRole.TEACHER, UserRole.ADMIN]:
+        logger.warning(f"用户 {current_user.user_id} 尝试访问教师功能，当前角色: {current_user.user_role}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="需要教师权限"
+            detail="需要教师或管理员权限才能访问此功能"
         )
     return current_user
 
 
 async def get_current_student(current_user: ConfigUser = Depends(get_current_user)) -> ConfigUser:
-    """获取当前学生用户"""
+    """获取当前学生用户（需要学生权限）"""
     if current_user.user_role not in [UserRole.STUDENT, UserRole.ADMIN]:
+        logger.warning(f"用户 {current_user.user_id} 尝试访问学生功能，当前角色: {current_user.user_role}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="需要学生权限"
+            detail="需要学生或管理员权限才能访问此功能"
+        )
+    return current_user
+
+
+async def require_admin(current_user: ConfigUser = Depends(get_current_user)) -> ConfigUser:
+    """需要管理员权限"""
+    if current_user.user_role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="需要管理员权限"
         )
     return current_user
 

@@ -48,63 +48,96 @@
     </el-card>
 
     <!-- 用户列表 -->
-    <el-card>
+    <el-card class="table-card">
       <el-table
         v-loading="loading"
         :data="userList"
         style="width: 100%"
+        stripe
+        border
+        size="default"
+        :header-cell-style="{ background: '#f5f7fa', color: '#606266' }"
       >
-        <el-table-column prop="user_name" label="用户名" width="120" />
-        <el-table-column prop="user_email" label="邮箱" width="200" />
-        <el-table-column prop="user_full_name" label="真实姓名" width="120" />
-        <el-table-column prop="user_role" label="角色" width="100">
+        <el-table-column prop="user_name" label="用户名" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="user_email" label="邮箱" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="user_full_name" label="真实姓名" min-width="100" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span>{{ row.user_full_name || '--' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="user_role" label="角色" width="80" align="center">
           <template #default="{ row }">
             <el-tag
               :type="getRoleTagType(row.user_role)"
               size="small"
+              effect="plain"
             >
               {{ getRoleText(row.user_role) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="user_status" label="状态" width="100">
+        <el-table-column prop="user_status" label="状态" width="80" align="center">
           <template #default="{ row }">
             <el-tag
               :type="getStatusTagType(row.user_status)"
               size="small"
+              effect="plain"
             >
               {{ getStatusText(row.user_status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="organization_name" label="所属机构" width="150" />
-        <el-table-column prop="user_login_count" label="登录次数" width="100" />
-        <el-table-column prop="user_last_login_time" label="最后登录" width="150">
+        <el-table-column prop="organization_name" label="所属机构" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">
-            {{ formatTime(row.user_last_login_time) }}
+            <span>{{ row.organization_name || '--' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="created_time" label="创建时间" width="150">
+        <el-table-column prop="user_login_count" label="登录次数" width="90" align="center">
           <template #default="{ row }">
-            {{ formatTime(row.created_time) }}
+            <span class="login-count">{{ row.user_login_count || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column prop="user_last_login_time" label="最后登录" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="handleEdit(row)">
-              编辑
-            </el-button>
-            <el-button type="warning" size="small" @click="handleResetPassword(row)">
-              重置密码
-            </el-button>
-            <el-button
-              v-if="row.user_id !== currentUser.user_id"
-              type="danger"
-              size="small"
-              @click="handleDelete(row)"
-            >
-              删除
-            </el-button>
+            <span class="time-text">{{ formatTime(row.user_last_login_time) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_time" label="创建时间" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="time-text">{{ formatTime(row.created_time) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="280" fixed="right" align="center">
+          <template #default="{ row }">
+            <div class="action-buttons">
+              <el-button
+                type="info"
+                size="small"
+                @click="handleEdit(row)"
+                :icon="Edit"
+              >
+                编辑
+              </el-button>
+              <el-button
+                type="warning"
+                size="small"
+                plain
+                @click="handleResetPassword(row)"
+                :icon="Key"
+              >
+                重置密码
+              </el-button>
+              <el-button
+                v-if="row.user_id !== currentUser.user_id"
+                type="danger"
+                size="small"
+                plain
+                @click="handleDelete(row)"
+                :icon="Delete"
+              >
+                删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -117,6 +150,7 @@
           :page-sizes="[10, 20, 50, 100]"
           :total="pagination.total"
           layout="total, sizes, prev, pager, next, jumper"
+          background
           @size-change="handleSizeChange"
           @current-change="handleCurrentChange"
         />
@@ -207,12 +241,15 @@ import { ref, reactive, onMounted } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Edit, Key, Delete } from '@element-plus/icons-vue'
 
 export default {
   name: 'AdminUsers',
   components: {
-    Plus
+    Plus,
+    Edit,
+    Key,
+    Delete
   },
   setup() {
     const adminStore = useAdminStore()
@@ -279,10 +316,11 @@ export default {
           ...searchForm
         }
 
-        await adminStore.fetchUsers(params)
+        const response = await adminStore.fetchUsers(params)
         userList.value = adminStore.users.items
         pagination.total = adminStore.users.total
       } catch (error) {
+        console.error('加载用户列表失败:', error)
         ElMessage.error('加载用户列表失败')
       } finally {
         loading.value = false
@@ -451,7 +489,10 @@ export default {
       getRoleTagType,
       getStatusText,
       getStatusTagType,
-      formatTime
+      formatTime,
+      Edit,
+      Key,
+      Delete
     }
   }
 }
@@ -467,6 +508,8 @@ export default {
   justify-content: space-between;
   align-items: flex-end;
   margin-bottom: 20px;
+  padding: 16px 0;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .header-left h1 {
@@ -484,15 +527,123 @@ export default {
 
 .filter-card {
   margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.table-card {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .pagination-wrapper {
   display: flex;
   justify-content: center;
   margin-top: 20px;
+  padding: 16px 0;
+  border-top: 1px solid #f0f0f0;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+}
+
+.action-buttons .el-button {
+  padding: 4px 6px;
+  font-size: 12px;
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.login-count {
+  font-weight: 600;
+  color: #409eff;
+}
+
+.time-text {
+  font-size: 12px;
+  color: #606266;
 }
 
 :deep(.el-card__body) {
   padding: 20px;
+}
+
+:deep(.el-table) {
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+:deep(.el-table th) {
+  background-color: #fafafa !important;
+  border-bottom: 2px solid #e4e7ed;
+  font-weight: 600;
+  color: #606266;
+}
+
+:deep(.el-table td) {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+:deep(.el-table--striped .el-table__body tr.el-table__row--striped td) {
+  background-color: #fafbfc;
+}
+
+:deep(.el-table__body tr:hover td) {
+  background-color: #f5f7fa !important;
+}
+
+:deep(.el-tag) {
+  font-weight: 500;
+}
+
+:deep(.el-form--inline .el-form-item) {
+  margin-right: 20px;
+  margin-bottom: 12px;
+}
+
+:deep(.el-input) {
+  border-radius: 4px;
+}
+
+:deep(.el-select) {
+  border-radius: 4px;
+}
+
+:deep(.el-button) {
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+:deep(.el-button--primary) {
+  background-color: #409eff;
+  border-color: #409eff;
+}
+
+:deep(.el-button--primary:hover) {
+  background-color: #66b1ff;
+  border-color: #66b1ff;
+}
+
+:deep(.el-dialog) {
+  border-radius: 8px;
+}
+
+:deep(.el-dialog__header) {
+  background-color: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+  padding: 16px 20px;
+}
+
+:deep(.el-dialog__title) {
+  font-weight: 600;
+  color: #303133;
+}
+
+:deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #606266;
 }
 </style>

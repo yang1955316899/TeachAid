@@ -244,54 +244,230 @@ class RedisClient:
     # =============================================================================
     # Set操作
     # =============================================================================
-    
+
     async def sadd(self, name: str, *values) -> int:
         """添加到集合"""
         if not await self.is_available():
             return 0
-        
+
         try:
             result = await self.redis.sadd(name, *values)
             return int(result)
         except Exception as e:
             logger.error(f"Redis SADD失败 {name}: {e}")
             return 0
-    
+
     async def srem(self, name: str, *values) -> int:
         """从集合删除"""
         if not await self.is_available():
             return 0
-        
+
         try:
             result = await self.redis.srem(name, *values)
             return int(result)
         except Exception as e:
             logger.error(f"Redis SREM失败 {name}: {e}")
             return 0
-    
+
     async def smembers(self, name: str) -> List[str]:
         """获取集合成员"""
         if not await self.is_available():
             return []
-        
+
         try:
             result = await self.redis.smembers(name)
             return list(result) if result else []
         except Exception as e:
             logger.error(f"Redis SMEMBERS失败 {name}: {e}")
             return []
-    
+
     async def scard(self, name: str) -> int:
         """获取集合大小"""
         if not await self.is_available():
             return 0
-        
+
         try:
             result = await self.redis.scard(name)
             return int(result)
         except Exception as e:
             logger.error(f"Redis SCARD失败 {name}: {e}")
             return 0
+
+    # =============================================================================
+    # 缓存增强功能
+    # =============================================================================
+
+    async def incr(self, key: str, amount: int = 1) -> int:
+        """递增计数器"""
+        if not await self.is_available():
+            return 0
+
+        try:
+            result = await self.redis.incr(key, amount)
+            return int(result)
+        except Exception as e:
+            logger.error(f"Redis INCR失败 {key}: {e}")
+            return 0
+
+    async def decr(self, key: str, amount: int = 1) -> int:
+        """递减计数器"""
+        if not await self.is_available():
+            return 0
+
+        try:
+            result = await self.redis.decr(key, amount)
+            return int(result)
+        except Exception as e:
+            logger.error(f"Redis DECR失败 {key}: {e}")
+            return 0
+
+    async def keys(self, pattern: str) -> List[str]:
+        """按模式获取键列表"""
+        if not await self.is_available():
+            return []
+
+        try:
+            result = await self.redis.keys(pattern)
+            return list(result) if result else []
+        except Exception as e:
+            logger.error(f"Redis KEYS失败 {pattern}: {e}")
+            return []
+
+    async def scan_iter(self, pattern: str = "*", count: int = 100):
+        """迭代扫描键（推荐用于大数据集）"""
+        if not await self.is_available():
+            return
+
+        try:
+            async for key in self.redis.scan_iter(match=pattern, count=count):
+                yield key
+        except Exception as e:
+            logger.error(f"Redis SCAN失败 {pattern}: {e}")
+
+    async def batch_get(self, keys: List[str]) -> Dict[str, Any]:
+        """批量获取多个键的值"""
+        if not await self.is_available() or not keys:
+            return {}
+
+        try:
+            values = await self.redis.mget(keys)
+            result = {}
+
+            for i, key in enumerate(keys):
+                if i < len(values) and values[i] is not None:
+                    try:
+                        result[key] = json.loads(values[i])
+                    except (json.JSONDecodeError, TypeError):
+                        result[key] = values[i]
+
+            return result
+        except Exception as e:
+            logger.error(f"Redis批量获取失败: {e}")
+            return {}
+
+    async def batch_set(self, mapping: Dict[str, Any], expire: Optional[int] = None) -> bool:
+        """批量设置多个键值对"""
+        if not await self.is_available() or not mapping:
+            return False
+
+        try:
+            # 准备数据
+            processed_mapping = {}
+            for key, value in mapping.items():
+                if isinstance(value, (dict, list)):
+                    processed_mapping[key] = json.dumps(value, ensure_ascii=False, default=str)
+                else:
+                    processed_mapping[key] = str(value)
+
+            # 批量设置
+            await self.redis.mset(processed_mapping)
+
+            # 如果需要设置过期时间
+            if expire:
+                pipeline = self.redis.pipeline()
+                for key in mapping.keys():
+                    pipeline.expire(key, expire)
+                await pipeline.execute()
+
+            return True
+        except Exception as e:
+            logger.error(f"Redis批量设置失败: {e}")
+            return False
+
+    async def clear_pattern(self, pattern: str) -> int:
+        """清除匹配模式的所有键"""
+        if not await self.is_available():
+            return 0
+
+        count = 0
+        try:
+            async for key in self.scan_iter(pattern=pattern):
+                await self.redis.delete(key)
+                count += 1
+
+            logger.info(f"清除了 {count} 个匹配 {pattern} 的键")
+            return count
+        except Exception as e:
+            logger.error(f"Redis清除模式失败 {pattern}: {e}")
+            return 0
+
+    async def get_memory_usage(self) -> Dict[str, Any]:
+        """获取Redis内存使用情况"""
+        if not await self.is_available():
+            return {}
+
+        try:
+            info = await self.redis.info('memory')
+            return {
+                'used_memory': info.get('used_memory', 0),
+                'used_memory_human': info.get('used_memory_human', '0B'),
+                'used_memory_peak': info.get('used_memory_peak', 0),
+                'used_memory_peak_human': info.get('used_memory_peak_human', '0B'),
+                'memory_fragmentation_ratio': info.get('mem_fragmentation_ratio', 0),
+            }
+        except Exception as e:
+            logger.error(f"获取Redis内存信息失败: {e}")
+            return {}
+
+    async def get_stats(self) -> Dict[str, Any]:
+        """获取Redis统计信息"""
+        if not await self.is_available():
+            return {}
+
+        try:
+            info = await self.redis.info()
+            return {
+                'version': info.get('redis_version', 'unknown'),
+                'connected_clients': info.get('connected_clients', 0),
+                'used_memory_human': info.get('used_memory_human', '0B'),
+                'keyspace_hits': info.get('keyspace_hits', 0),
+                'keyspace_misses': info.get('keyspace_misses', 0),
+                'total_commands_processed': info.get('total_commands_processed', 0),
+                'hit_rate': 0
+            }
+        except Exception as e:
+            logger.error(f"获取Redis统计信息失败: {e}")
+            return {}
+
+    async def pipeline_execute(self, commands: List[Dict]) -> List[Any]:
+        """批量执行Redis命令"""
+        if not await self.is_available() or not commands:
+            return []
+
+        try:
+            pipeline = self.redis.pipeline()
+
+            for cmd in commands:
+                method = getattr(pipeline, cmd['command'])
+                args = cmd.get('args', [])
+                kwargs = cmd.get('kwargs', {})
+                method(*args, **kwargs)
+
+            results = await pipeline.execute()
+            return results
+        except Exception as e:
+            logger.error(f"Redis管道执行失败: {e}")
+            return []
 
 
 # 全局Redis客户端实例

@@ -263,7 +263,7 @@ async def get_user_profile(
 ):
     """
     获取当前登录用户的详细资料
-    
+
     需要有效的访问令牌
     """
     try:
@@ -279,11 +279,99 @@ async def get_user_profile(
             created_time=current_user.created_time,
             last_login_time=current_user.user_last_login_time
         )
-        
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取用户资料失败：{str(e)}"
+        )
+
+
+class UserProfileUpdateRequest(BaseModel):
+    """用户资料更新请求"""
+    user_full_name: Optional[str] = Field(None, max_length=100, description="真实姓名")
+    user_email: Optional[EmailStr] = Field(None, description="邮箱地址")
+    user_settings: Optional[Dict[str, Any]] = Field(None, description="用户设置")
+    user_preferences: Optional[Dict[str, Any]] = Field(None, description="用户偏好")
+
+
+@router.put("/profile", response_model=BaseResponse, summary="更新用户资料")
+async def update_user_profile(
+    profile_data: UserProfileUpdateRequest,
+    current_user: ConfigUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    更新用户资料
+
+    - **user_full_name**: 真实姓名（可选）
+    - **user_email**: 邮箱地址（可选，需要重新验证）
+    - **user_settings**: 用户设置（可选）
+    - **user_preferences**: 用户偏好（可选）
+    """
+    try:
+        # 构建更新数据
+        update_data = profile_data.dict(exclude_unset=True)
+
+        # 如果要更新邮箱，需要检查是否已被使用
+        if "user_email" in update_data and update_data["user_email"] != current_user.user_email:
+            from sqlalchemy import select
+
+            existing_user = await db.execute(
+                select(ConfigUser).where(
+                    ConfigUser.user_email == update_data["user_email"],
+                    ConfigUser.user_id != current_user.user_id
+                )
+            )
+
+            if existing_user.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="该邮箱地址已被其他用户使用"
+                )
+
+            # 邮箱变更后需要重新验证
+            current_user.user_is_verified = False
+            current_user.user_verification_token = None  # 可以在这里生成新的验证令牌
+
+        # 更新用户资料
+        for field, value in update_data.items():
+            if hasattr(current_user, field):
+                setattr(current_user, field, value)
+
+        # 更新时间戳
+        current_user.updated_time = datetime.utcnow()
+
+        await db.commit()
+        await db.refresh(current_user)
+
+        # 返回更新后的用户资料
+        updated_profile = UserProfileResponse(
+            user_id=current_user.user_id,
+            user_name=current_user.user_name,
+            user_email=current_user.user_email,
+            user_full_name=current_user.user_full_name,
+            user_role=current_user.user_role.value,
+            user_status=current_user.user_status.value if hasattr(current_user.user_status, 'value') else 'active',
+            organization_id=current_user.organization_id,
+            user_is_verified=current_user.user_is_verified,
+            created_time=current_user.created_time,
+            last_login_time=current_user.user_last_login_time
+        )
+
+        return BaseResponse(
+            success=True,
+            message="用户资料更新成功",
+            data=updated_profile.dict()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"更新用户资料失败：{str(e)}"
         )
 
 

@@ -112,10 +112,18 @@ export const useAdminStore = defineStore('admin', {
       this.users.loading = true
       try {
         const response = await adminApi.getUsers(params)
-        if (response.success) {
+
+        // 处理两种可能的响应格式
+        if (response.success && response.data) {
+          // 新格式：包装在ResponseModel中
           this.users.items = response.data.items
           this.users.total = response.data.total
+        } else if (response.items) {
+          // 旧格式：直接的PageResponseModel
+          this.users.items = response.items
+          this.users.total = response.total
         }
+
         return response
       } catch (error) {
         console.error('获取用户列表失败:', error)

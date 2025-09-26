@@ -147,23 +147,37 @@ class SecurityMiddleware:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="非法路径"
             )
-        
+
+        # 允许的合法 admin 路径
+        allowed_admin_paths = [
+            '/api/admin',  # API 路径
+            '/admin/',     # 前端路由（斜杠结尾）
+        ]
+
+        # 如果是合法的 admin 路径，直接返回
+        for allowed_path in allowed_admin_paths:
+            if path.lower().startswith(allowed_path.lower()):
+                return
+
         # 检查敏感路径
         sensitive_paths = [
             '/.env',
             '/config',
-            '/admin',
+            '/admin',      # 只拦截根 /admin 路径，不拦截子路径
             '/wp-admin',
             '/phpmyadmin'
         ]
-        
+
         for sensitive_path in sensitive_paths:
-            if sensitive_path in path.lower():
-                logger.warning(f"敏感路径访问尝试: {path}")
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="页面不存在"
-                )
+            # 精确匹配，避免误拦截合法路径
+            if path.lower() == sensitive_path.lower() or path.lower().startswith(sensitive_path.lower() + '/'):
+                # 但是排除我们的合法路径
+                if not any(path.lower().startswith(allowed.lower()) for allowed in allowed_admin_paths):
+                    logger.warning(f"敏感路径访问尝试: {path}")
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="页面不存在"
+                    )
     
     def check_parameter_security(self, params: Dict[str, str], client_ip: str) -> None:
         """检查参数安全性"""

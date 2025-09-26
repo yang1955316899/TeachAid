@@ -75,19 +75,48 @@ class UnifiedAIFramework:
         
     def _setup_litellm(self):
         """配置LiteLLM"""
-        # 设置日志级别
-        litellm.set_verbose = settings.debug
-        
-        # 配置API密钥
-        litellm.api_key = settings.ai.openai_api_key
-        litellm.anthropic_api_key = settings.ai.anthropic_api_key
-        
-        # 启用缓存
-        litellm.cache = litellm.Cache()
-        
-        # 成本追踪
-        if settings.cost_control.cost_tracking_enabled:
-            litellm.success_callback = ["langfuse"]
+        try:
+            # 设置日志级别
+            litellm.set_verbose = settings.debug
+
+            # 配置API密钥 - 只设置可用的密钥
+            if settings.ai.openai_api_key and settings.ai.openai_api_key != "your-openai-api-key":
+                litellm.api_key = settings.ai.openai_api_key
+                logger.info("OpenAI API密钥已配置")
+
+            if settings.ai.anthropic_api_key and settings.ai.anthropic_api_key != "your-anthropic-api-key":
+                litellm.anthropic_api_key = settings.ai.anthropic_api_key
+                logger.info("Anthropic API密钥已配置")
+
+            if settings.ai.qwen_api_key and settings.ai.qwen_api_key != "your-qwen-api-key":
+                litellm.qwen_api_key = settings.ai.qwen_api_key
+                logger.info("Qwen API密钥已配置")
+
+            if settings.ai.yi_api_key and settings.ai.yi_api_key != "your-yi-api-key":
+                litellm.yi_api_key = settings.ai.yi_api_key
+                logger.info("Yi API密钥已配置")
+
+            # 启用缓存
+            litellm.cache = litellm.Cache()
+            logger.info("LiteLLM缓存已启用")
+
+            # 设置错误重试
+            litellm.num_retries = 3
+            litellm.request_timeout = 60
+
+            # 成本追踪
+            if settings.cost_control.cost_tracking_enabled:
+                try:
+                    litellm.success_callback = ["langfuse"]
+                    logger.info("成本追踪已启用")
+                except Exception as e:
+                    logger.warning(f"成本追踪配置失败: {e}")
+
+            logger.info("LiteLLM配置完成")
+
+        except Exception as e:
+            logger.error(f"LiteLLM配置失败: {e}")
+            # 不抛异常，允许系统继续运行
             
     def _build_processing_workflow(self) -> StateGraph:
         """构建处理工作流"""
@@ -362,14 +391,57 @@ class UnifiedAIFramework:
     
     def _select_model(self, task_type: str, complexity: TaskComplexity) -> str:
         """智能选择模型"""
+        # 根据复杂度选择层级
         if complexity == TaskComplexity.HIGH:
-            tier = "primary"
+            tiers = ["primary", "fallback", "budget"]
         elif complexity == TaskComplexity.MEDIUM:
-            tier = "primary"
+            tiers = ["primary", "fallback", "budget"]
         else:
-            tier = "budget"
-            
-        return self.model_config[tier].get(task_type, "gpt-4o-mini")
+            tiers = ["budget", "fallback", "primary"]
+
+        # 依次尝试每个层级的模型
+        for tier in tiers:
+            model = self.model_config[tier].get(task_type)
+            if model and self._is_model_available(model):
+                logger.info(f"选择模型: {model} (层级: {tier})")
+                return model
+
+        # 如果都不可用，返回默认模型
+        fallback_model = "gpt-4o-mini"
+        logger.warning(f"所有首选模型不可用，使用备用模型: {fallback_model}")
+        return fallback_model
+
+    def _is_model_available(self, model: str) -> bool:
+        """检查模型是否可用"""
+        try:
+            # 检查API密钥是否配置
+            if model.startswith("gpt") or model.startswith("o1"):
+                return bool(settings.ai.openai_api_key and
+                          settings.ai.openai_api_key != "your-openai-api-key")
+            elif model.startswith("claude"):
+                return bool(settings.ai.anthropic_api_key and
+                          settings.ai.anthropic_api_key != "your-anthropic-api-key")
+            elif model.startswith("qwen"):
+                return bool(settings.ai.qwen_api_key and
+                          settings.ai.qwen_api_key != "your-qwen-api-key")
+            elif model.startswith("yi"):
+                return bool(settings.ai.yi_api_key and
+                          settings.ai.yi_api_key != "your-yi-api-key")
+            elif model.startswith("deepseek"):
+                # DeepSeek通常支持OpenAI格式
+                return bool(settings.ai.openai_api_key and
+                          settings.ai.openai_api_key != "your-openai-api-key")
+            elif model.startswith("moonshot"):
+                # Moonshot通常支持OpenAI格式
+                return bool(settings.ai.openai_api_key and
+                          settings.ai.openai_api_key != "your-openai-api-key")
+            else:
+                # 未知模型，假设需要OpenAI密钥
+                return bool(settings.ai.openai_api_key and
+                          settings.ai.openai_api_key != "your-openai-api-key")
+        except Exception as e:
+            logger.error(f"检查模型可用性失败 {model}: {e}")
+            return False
     
     def _select_rewrite_model(self, subject: str) -> str:
         """根据学科选择改写模型"""
@@ -422,22 +494,74 @@ class UnifiedAIFramework:
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
         try:
+            # 选择一个可用的模型进行测试
+            test_model = None
+            available_models = await self.get_available_models()
+
+            if available_models:
+                test_model = available_models[0]
+            else:
+                return {
+                    "status": "unhealthy",
+                    "error": "没有可用的AI模型",
+                    "models_available": []
+                }
+
+            start_time = time.time()
             response = await acompletion(
-                model="gpt-4o-mini",
+                model=test_model,
                 messages=[{"role": "user", "content": "Hello"}],
                 max_tokens=5
             )
-            
+            response_time = time.time() - start_time
+
             return {
                 "status": "healthy",
-                "models_available": await self.get_available_models(),
-                "test_response_time": 0.5  # 模拟
+                "models_available": available_models,
+                "test_model": test_model,
+                "test_response_time": round(response_time, 3)
             }
         except Exception as e:
+            logger.error(f"AI健康检查失败: {e}")
             return {
-                "status": "unhealthy", 
-                "error": str(e)
+                "status": "unhealthy",
+                "error": str(e),
+                "models_available": await self.get_available_models()
             }
+
+    async def get_model_status(self) -> Dict[str, Any]:
+        """获取模型状态信息"""
+        status = {
+            "configured_models": {},
+            "available_models": [],
+            "api_keys_status": {}
+        }
+
+        # 检查API密钥状态
+        status["api_keys_status"] = {
+            "openai": bool(settings.ai.openai_api_key and
+                         settings.ai.openai_api_key != "your-openai-api-key"),
+            "anthropic": bool(settings.ai.anthropic_api_key and
+                            settings.ai.anthropic_api_key != "your-anthropic-api-key"),
+            "qwen": bool(settings.ai.qwen_api_key and
+                       settings.ai.qwen_api_key != "your-qwen-api-key"),
+            "yi": bool(settings.ai.yi_api_key and
+                     settings.ai.yi_api_key != "your-yi-api-key")
+        }
+
+        # 检查配置的模型
+        for tier, models in self.model_config.items():
+            status["configured_models"][tier] = {}
+            for task_type, model in models.items():
+                status["configured_models"][tier][task_type] = {
+                    "model": model,
+                    "available": self._is_model_available(model)
+                }
+
+        # 获取可用模型列表
+        status["available_models"] = await self.get_available_models()
+
+        return status
 
 
 # 全局实例
