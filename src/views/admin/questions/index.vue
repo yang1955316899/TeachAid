@@ -116,8 +116,9 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
+import adminApi from '@/api/admin'
 
 const loading = ref(false)
 const questions = ref([])
@@ -154,31 +155,82 @@ const getDifficultyText = (difficulty) => {
   return textMap[difficulty] || '未知'
 }
 
+const getQuestionTypeText = (type) => {
+  const typeMap = {
+    'choice': '选择题',
+    'blank': '填空题',
+    'answer': '解答题',
+    'calculation': '计算题'
+  }
+  return typeMap[type] || type
+}
+
 const formatDate = (date) => {
-  return new Date(date).toLocaleDateString('zh-CN')
+  if (!date) return ''
+  return new Date(date).toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  })
 }
 
 const loadData = async () => {
   loading.value = true
   try {
-    // 模拟数据
-    questions.value = [
-      {
-        id: '1',
-        title: '一元二次方程的解法',
-        subject: '数学',
-        questionType: '解答题',
-        difficulty: 'medium',
-        creatorName: '张老师',
-        qualityScore: 4,
-        usageCount: 15,
-        createdAt: '2024-09-01',
-        isActive: true
-      }
-    ]
-    pagination.total = 1
+    const params = {
+      page: pagination.page,
+      size: pagination.size,
+      subject: filters.subject || undefined,
+      question_type: filters.questionType || undefined,
+      difficulty: filters.difficulty || undefined,
+      creator_id: filters.creatorId || undefined
+    }
+
+    const response = await adminApi.getQuestions(params)
+
+    if (response.data && response.data.items) {
+      questions.value = response.data.items.map(item => ({
+        id: item.id,
+        title: item.title,
+        subject: item.subject,
+        questionType: item.question_type,
+        difficulty: item.difficulty,
+        creatorName: item.creator_name || '未知',
+        qualityScore: item.quality_score || 0,
+        usageCount: 0, // 后端暂无此字段
+        createdAt: item.created_time,
+        isActive: item.is_active,
+        isPublic: item.is_public,
+        gradeLevel: item.grade_level,
+        knowledgePoints: item.knowledge_points,
+        tags: item.tags
+      }))
+      pagination.total = response.data.total || 0
+    } else {
+      questions.value = []
+      pagination.total = 0
+    }
+  } catch (error) {
+    console.error('获取题目列表失败:', error)
+    ElMessage.error('获取题目列表失败')
+    questions.value = []
+    pagination.total = 0
   } finally {
     loading.value = false
+  }
+}
+
+const loadTeachers = async () => {
+  try {
+    const response = await adminApi.getUsers({ role: 'teacher', page: 1, size: 100 })
+    if (response.data && response.data.items) {
+      teachers.value = response.data.items.map(item => ({
+        id: item.id,
+        name: item.user_full_name || item.username
+      }))
+    }
+  } catch (error) {
+    console.error('获取教师列表失败:', error)
   }
 }
 
@@ -207,17 +259,52 @@ const handleCurrentChange = (page) => {
   loadData()
 }
 
-const viewQuestion = (row) => {
-  ElMessage.info('查看题目功能待实现')
+const viewQuestion = async (row) => {
+  try {
+    const response = await adminApi.getQuestionDetail(row.id)
+    if (response.data) {
+      ElMessageBox.alert(
+        `<div style="max-height: 400px; overflow-y: auto;">
+          <p><strong>标题:</strong> ${response.data.title || '无标题'}</p>
+          <p><strong>学科:</strong> ${response.data.subject}</p>
+          <p><strong>题型:</strong> ${getQuestionTypeText(response.data.question_type)}</p>
+          <p><strong>难度:</strong> ${getDifficultyText(response.data.difficulty)}</p>
+          <p><strong>年级:</strong> ${response.data.grade_level || '未设置'}</p>
+          <p><strong>创建者:</strong> ${response.data.creator_name || '未知'}</p>
+          <p><strong>质量分数:</strong> ${response.data.quality_score || 0}</p>
+          <p><strong>知识点:</strong> ${response.data.knowledge_points ? response.data.knowledge_points.join(', ') : '无'}</p>
+          <p><strong>标签:</strong> ${response.data.tags ? response.data.tags.join(', ') : '无'}</p>
+          <p><strong>内容:</strong></p>
+          <div style="border: 1px solid #ddd; padding: 10px; background: #f9f9f9; white-space: pre-wrap;">${response.data.content || '无内容'}</div>
+          ${response.data.original_answer ? `<p><strong>原始答案:</strong></p><div style="border: 1px solid #ddd; padding: 10px; background: #f0f9ff; white-space: pre-wrap;">${response.data.original_answer}</div>` : ''}
+          ${response.data.rewritten_answer ? `<p><strong>改写答案:</strong></p><div style="border: 1px solid #ddd; padding: 10px; background: #f0f9f0; white-space: pre-wrap;">${response.data.rewritten_answer}</div>` : ''}
+        </div>`,
+        '题目详情',
+        {
+          dangerouslyUseHTMLString: true,
+          customClass: 'question-detail-dialog'
+        }
+      )
+    }
+  } catch (error) {
+    console.error('获取题目详情失败:', error)
+    ElMessage.error('获取题目详情失败')
+  }
 }
 
 const editQuestion = (row) => {
   ElMessage.info('编辑题目功能待实现')
 }
 
-const toggleStatus = (row) => {
-  row.isActive = !row.isActive
-  ElMessage.success(`题目已${row.isActive ? '启用' : '禁用'}`)
+const toggleStatus = async (row) => {
+  try {
+    await adminApi.updateQuestionStatus(row.id, !row.isActive)
+    row.isActive = !row.isActive
+    ElMessage.success(`题目已${row.isActive ? '启用' : '禁用'}`)
+  } catch (error) {
+    console.error('更新题目状态失败:', error)
+    ElMessage.error('更新题目状态失败')
+  }
 }
 
 const rewriteAnswer = (row) => {
@@ -228,12 +315,33 @@ const viewUsage = (row) => {
   ElMessage.info('使用统计功能待实现')
 }
 
-const deleteQuestion = (row) => {
-  ElMessage.info('删除题目功能待实现')
+const deleteQuestion = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除题目"${row.title}"吗？此操作不可恢复。`,
+      '确认删除',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消'
+      }
+    )
+
+    await adminApi.deleteQuestion(row.id)
+    ElMessage.success('题目删除成功')
+    loadData() // 重新加载数据
+  } catch (error) {
+    if (error === 'cancel') {
+      return
+    }
+    console.error('删除题目失败:', error)
+    ElMessage.error(error.response?.data?.detail || '删除题目失败')
+  }
 }
 
 onMounted(() => {
   loadData()
+  loadTeachers()
 })
 </script>
 
@@ -257,5 +365,38 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: center;
+}
+</style>
+
+<style>
+.question-detail-dialog {
+  width: 80%;
+  max-width: 900px;
+}
+
+.question-detail-dialog .el-message-box__content {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.question-detail-dialog .el-message-box__message {
+  line-height: 1.6;
+}
+
+.question-detail-dialog p {
+  margin: 8px 0;
+}
+
+.question-detail-dialog strong {
+  color: #409eff;
+  font-weight: 600;
+}
+
+.question-detail-dialog div[style*="border"] {
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 8px 0;
 }
 </style>

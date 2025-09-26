@@ -15,17 +15,31 @@
       <div class="menu-container">
         <a-menu
           v-model:selectedKeys="selectedKeys"
+          v-model:openKeys="openKeys"
           theme="dark"
           mode="inline"
           @click="handleMenuClick"
           class="custom-menu"
         >
-          <a-menu-item v-for="item in menuItems" :key="item.key">
-            <template #icon>
-              <component :is="item.icon" />
-            </template>
-            {{ item.title }}
-          </a-menu-item>
+          <template v-for="item in menuItems" :key="item.key">
+            <!-- 有子菜单的项目 -->
+            <a-sub-menu v-if="item.children" :key="item.key">
+              <template #icon>
+                <component :is="item.icon" />
+              </template>
+              <template #title>{{ item.title }}</template>
+              <a-menu-item v-for="child in item.children" :key="child.key">
+                {{ child.title }}
+              </a-menu-item>
+            </a-sub-menu>
+            <!-- 普通菜单项 -->
+            <a-menu-item v-else :key="item.key">
+              <template #icon>
+                <component :is="item.icon" />
+              </template>
+              {{ item.title }}
+            </a-menu-item>
+          </template>
         </a-menu>
       </div>
     </a-layout-sider>
@@ -112,14 +126,38 @@ export default {
   data() {
     return {
       collapsed: false,
-      selectedKeys: []
+      selectedKeys: [],
+      openKeys: []
     }
   },
   computed: {
     currentRoute() {
-      return this.$route.name?.replace(this.userType.charAt(0).toUpperCase() + this.userType.slice(1), '').toLowerCase() || this.menuItems[0].key
+      const routeName = this.$route.name?.replace(this.userType.charAt(0).toUpperCase() + this.userType.slice(1), '').toLowerCase()
+
+      // 处理analytics子路由
+      if (routeName?.startsWith('analytics')) {
+        // AdminAnalyticsOverview -> analyticsoverview -> analytics/overview
+        // AdminAnalyticsUsers -> analyticsusers -> analytics/users
+        // AdminAnalyticsContent -> analyticscontent -> analytics/content
+        const analyticsRoute = routeName.replace('analytics', '')
+        if (analyticsRoute) {
+          return `analytics/${analyticsRoute}`
+        }
+        return 'analytics/overview' // 默认返回overview
+      }
+
+      return routeName || this.menuItems[0].key
     },
     currentTitle() {
+      // 先查找子菜单项
+      for (const item of this.menuItems) {
+        if (item.children) {
+          const child = item.children.find(child => child.key === this.currentRoute)
+          if (child) return child.title
+        }
+      }
+
+      // 再查找主菜单项
       const item = this.menuItems.find(item => item.key === this.currentRoute)
       return item ? item.title : this.menuItems[0].title
     }
@@ -127,6 +165,14 @@ export default {
   mounted() {
     // 初始化选中的菜单项
     this.selectedKeys = [this.currentRoute]
+
+    // 如果当前路由是子菜单，展开对应的父菜单
+    for (const item of this.menuItems) {
+      if (item.children && item.children.some(child => child.key === this.currentRoute)) {
+        this.openKeys = [item.key]
+        break
+      }
+    }
   },
   methods: {
     handleMenuClick({ key }) {
@@ -284,6 +330,46 @@ export default {
 
 .custom-menu :deep(.ant-menu-item-selected .anticon) {
   color: #3b82f6;
+}
+
+/* 子菜单样式 */
+.custom-menu :deep(.ant-menu-submenu) {
+  margin: 2px 8px;
+}
+
+.custom-menu :deep(.ant-menu-submenu-title) {
+  margin: 0;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.custom-menu :deep(.ant-menu-submenu-title:hover) {
+  background: rgba(59, 130, 246, 0.1) !important;
+  transform: translateX(2px);
+}
+
+.custom-menu :deep(.ant-menu-submenu-open > .ant-menu-submenu-title) {
+  background: rgba(59, 130, 246, 0.1) !important;
+}
+
+.custom-menu :deep(.ant-menu-submenu .ant-menu-item) {
+  margin: 1px 16px;
+  border-radius: 6px;
+  height: 36px;
+  padding-left: 24px !important;
+}
+
+.custom-menu :deep(.ant-menu-submenu .ant-menu-item:hover) {
+  background: rgba(59, 130, 246, 0.08) !important;
+}
+
+.custom-menu :deep(.ant-menu-submenu .ant-menu-item-selected) {
+  background: rgba(59, 130, 246, 0.15) !important;
+  color: #3b82f6 !important;
+  border-left: 2px solid #3b82f6;
 }
 
 /* 折叠状态样式 */

@@ -55,7 +55,21 @@ export default {
         {
           key: 'analytics',
           title: '数据分析',
-          icon: BarChartOutlined
+          icon: BarChartOutlined,
+          children: [
+            {
+              key: 'analytics/overview',
+              title: '数据概览'
+            },
+            {
+              key: 'analytics/users',
+              title: '用户分析'
+            },
+            {
+              key: 'analytics/content',
+              title: '内容分析'
+            }
+          ]
         },
         {
           key: 'settings',

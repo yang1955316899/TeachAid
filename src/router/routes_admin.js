@@ -77,6 +77,10 @@ export function setupAdminRoutes(router) {
         meta: { title: '权限管理' }
       },
       {
+        path: 'analytics',
+        redirect: '/admin/analytics/overview'
+      },
+      {
         path: 'analytics/overview',
         name: 'AdminAnalyticsOverview',
         component: defineAsyncComponent(() => import('@/views/admin/analytics/overview.vue')),

@@ -98,8 +98,9 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
+import adminApi from '@/api/admin'
 
 const loading = ref(false)
 const homeworks = ref([])
@@ -143,23 +144,74 @@ const formatDate = (date) => {
 const loadData = async () => {
   loading.value = true
   try {
-    // 模拟数据
-    homeworks.value = [
-      {
-        id: '1',
-        title: '数学练习题第一套',
-        teacherName: '张老师',
-        className: '初一(1)班',
-        questionCount: 10,
-        submissionCount: 25,
-        totalStudents: 30,
-        dueDate: '2024-09-25T23:59:59',
-        status: 'active'
+    const params = {
+      page: pagination.page,
+      page_size: pagination.size,
+      creator_id: filters.teacherId,
+      class_id: filters.classId,
+      is_published: filters.status === 'active' ? 'true' :
+                    filters.status === 'draft' ? 'false' : ''
+    }
+
+    // 移除空参数
+    Object.keys(params).forEach(key => {
+      if (params[key] === '' || params[key] === null || params[key] === undefined) {
+        delete params[key]
       }
-    ]
-    pagination.total = 1
+    })
+
+    const response = await adminApi.getHomeworks(params)
+
+    if (response.success) {
+      const items = response.data.items || []
+      homeworks.value = items.map(item => ({
+        id: item.id,
+        title: item.title,
+        teacherName: item.creator_name || '未知',
+        className: item.class_name || '未分配',
+        questionCount: item.question_count || 0,
+        submissionCount: item.completed_students || 0,
+        totalStudents: item.total_students || 0,
+        dueDate: item.due_at,
+        status: item.is_published ? 'active' : 'draft'
+      }))
+      pagination.total = response.data.total || 0
+    } else {
+      ElMessage.error(response.message || '获取作业列表失败')
+    }
+  } catch (error) {
+    console.error('加载作业数据失败:', error)
+    ElMessage.error('加载作业数据失败')
   } finally {
     loading.value = false
+  }
+}
+
+const loadTeachers = async () => {
+  try {
+    const response = await adminApi.getTeachers()
+    if (response.success) {
+      teachers.value = response.data.items.map(teacher => ({
+        id: teacher.user_id,
+        name: teacher.user_full_name || teacher.user_name
+      }))
+    }
+  } catch (error) {
+    console.error('加载教师列表失败:', error)
+  }
+}
+
+const loadClasses = async () => {
+  try {
+    const response = await adminApi.getClasses()
+    if (response.success) {
+      classes.value = response.data.items.map(cls => ({
+        id: cls.id,
+        name: cls.name
+      }))
+    }
+  } catch (error) {
+    console.error('加载班级列表失败:', error)
   }
 }
 
@@ -187,28 +239,142 @@ const handleCurrentChange = (page) => {
   loadData()
 }
 
-const viewDetails = (row) => {
-  ElMessage.info('查看作业详情功能待实现')
+const viewDetails = async (row) => {
+  try {
+    const response = await adminApi.getHomeworkDetail(row.id)
+    if (response.success) {
+      ElMessageBox.alert(
+        `
+        <div>
+          <p><strong>作业标题:</strong> ${response.data.title}</p>
+          <p><strong>创建教师:</strong> ${response.data.creator_name}</p>
+          <p><strong>所属班级:</strong> ${response.data.class_name}</p>
+          <p><strong>题目数量:</strong> ${response.data.question_count}</p>
+          <p><strong>完成率:</strong> ${response.data.completion_rate}%</p>
+          <p><strong>截止时间:</strong> ${formatDate(response.data.due_at)}</p>
+          <p><strong>发布状态:</strong> ${response.data.is_published ? '已发布' : '草稿'}</p>
+        </div>
+        `,
+        '作业详情',
+        {
+          dangerouslyUseHTMLString: true,
+          confirmButtonText: '确定'
+        }
+      )
+    }
+  } catch (error) {
+    ElMessage.error('获取作业详情失败')
+  }
 }
 
-const viewProgress = (row) => {
-  ElMessage.info('查看作业进度功能待实现')
+const viewProgress = async (row) => {
+  try {
+    const response = await adminApi.getHomeworkProgress(row.id)
+    if (response.success) {
+      const data = response.data
+      const progressInfo = `
+        <div>
+          <h4>作业进度统计</h4>
+          <p><strong>总学生数:</strong> ${data.total_students}</p>
+          <p><strong>已完成:</strong> ${data.completed_count} 人</p>
+          <p><strong>进行中:</strong> ${data.in_progress_count} 人</p>
+          <p><strong>未开始:</strong> ${data.not_started_count} 人</p>
+          <p><strong>完成率:</strong> ${data.completion_rate}%</p>
+          <p><strong>平均分:</strong> ${data.average_score} 分</p>
+        </div>
+      `
+      ElMessageBox.alert(progressInfo, '作业进度', {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '确定'
+      })
+    }
+  } catch (error) {
+    ElMessage.error('获取作业进度失败')
+  }
 }
 
-const extendDeadline = (row) => {
-  ElMessage.info('延期功能待实现')
+const extendDeadline = async (row) => {
+  try {
+    const { value: dateTime } = await ElMessageBox.prompt(
+      '请选择新的截止时间',
+      '延期作业',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputType: 'datetime-local'
+      }
+    )
+
+    if (dateTime) {
+      const response = await adminApi.extendHomeworkDeadline(row.id, {
+        new_due_date: new Date(dateTime).toISOString(),
+        reason: '管理员延期'
+      })
+
+      if (response.success) {
+        ElMessage.success('作业延期成功')
+        loadData()
+      } else {
+        ElMessage.error(response.message || '延期失败')
+      }
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('延期操作失败')
+    }
+  }
 }
 
-const exportReport = (row) => {
-  ElMessage.info('导出报告功能待实现')
+const exportReport = async (row) => {
+  try {
+    const response = await adminApi.exportHomeworkReport(row.id, 'csv')
+
+    // 创建下载链接
+    const blob = new Blob([response], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `homework_report_${row.id}_${new Date().getTime()}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+
+    ElMessage.success('报告导出成功')
+  } catch (error) {
+    ElMessage.error('导出报告失败')
+  }
 }
 
-const sendReminder = (row) => {
-  ElMessage.info('发送提醒功能待实现')
+const sendReminder = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要向未完成作业的学生发送提醒吗？`,
+      '发送提醒',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    const response = await adminApi.sendHomeworkReminder(row.id)
+    if (response.success) {
+      ElMessage.success(response.message)
+    } else {
+      ElMessage.error(response.message || '发送提醒失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('发送提醒失败')
+    }
+  }
 }
 
 onMounted(() => {
   loadData()
+  loadTeachers()
+  loadClasses()
 })
 </script>
 

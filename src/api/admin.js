@@ -72,6 +72,14 @@ const adminApi = {
     return http.get('/admin/homeworks', { params })
   },
 
+  getHomeworkDetail(homeworkId) {
+    return http.get(`/admin/homeworks/${homeworkId}`)
+  },
+
+  getHomeworkProgress(homeworkId) {
+    return http.get(`/admin/homeworks/${homeworkId}/progress`)
+  },
+
   getHomeworkStudents(homeworkId, params) {
     return http.get(`/admin/homeworks/${homeworkId}/students`, { params })
   },
@@ -82,6 +90,25 @@ const adminApi = {
 
   unpublishHomework(homeworkId) {
     return http.post(`/admin/homeworks/${homeworkId}/unpublish`)
+  },
+
+  extendHomeworkDeadline(homeworkId, data) {
+    return http.post(`/admin/homeworks/${homeworkId}/extend`, data)
+  },
+
+  sendHomeworkReminder(homeworkId) {
+    return http.post(`/admin/homeworks/${homeworkId}/send-reminder`)
+  },
+
+  exportHomeworkReport(homeworkId, format = 'csv') {
+    return http.get(`/admin/homeworks/${homeworkId}/export`, {
+      params: { format },
+      responseType: 'blob'
+    })
+  },
+
+  getTeachers() {
+    return http.get('/admin/users', { params: { role: 'teacher' } })
   },
 
   // ============ 题目管理 ============

@@ -46,6 +46,7 @@ declare module 'vue' {
     ASpin: typeof import('ant-design-vue/es')['Spin']
     AStatistic: typeof import('ant-design-vue/es')['Statistic']
     AStatisticCountdown: typeof import('ant-design-vue/es')['StatisticCountdown']
+    ASubMenu: typeof import('ant-design-vue/es')['SubMenu']
     ATable: typeof import('ant-design-vue/es')['Table']
     ATag: typeof import('ant-design-vue/es')['Tag']
     ATextarea: typeof import('ant-design-vue/es')['Textarea']
