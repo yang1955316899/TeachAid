@@ -66,3 +66,8 @@ dump.rdb
 .coverage
 htmlcov/
 .pytest_cache/
+
+# 归档文档和临时文件
+archived_docs/
+llm_generated/
+*.md.bak
