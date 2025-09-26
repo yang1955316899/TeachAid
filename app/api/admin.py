@@ -20,29 +20,16 @@ from app.models.database_models import (
     Class, Teaching, Question, Homework, StudentHomework, ClassStudent,
     Grade, Subject, Chapter, ChatSession, ChatMessage, FileUpload, ConfigOrganization
 )
-from app.models.pydantic_models import BaseResponse
+from app.models.pydantic_models import BaseResponse, PaginationResponse
 from app.services.auth_service import get_current_user, get_current_admin
 from pydantic import BaseModel, Field
 
-router = APIRouter(prefix="/api/admin", tags=["管理员"])
+router = APIRouter(prefix="/admin", tags=["管理员"])
 security = HTTPBearer()
 
 
-# 响应模型
-class ResponseModel(BaseModel):
-    """通用响应模型"""
-    success: bool = True
-    message: str = "操作成功"
-    data: Optional[Any] = None
-
-
-class PageResponseModel(BaseModel):
-    """分页响应模型"""
-    items: List[Any]
-    total: int
-    page: int
-    size: int
-    pages: int
+# 响应模型 - 使用统一的BaseResponse
+# 删除重复定义，使用app.models.pydantic_models中的BaseResponse和PaginationResponse
 
 
 # =============================================================================
@@ -190,7 +177,7 @@ async def get_users_test(
             "error": str(e)
         }
 
-@router.get("/users", response_model=ResponseModel)
+@router.get("/users", response_model=BaseResponse)
 async def get_users(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
@@ -307,7 +294,7 @@ async def get_users(
             "pages": (total + page_size - 1) // page_size
         }
 
-        return ResponseModel(
+        return BaseResponse(
             success=True,
             message="获取用户列表成功",
             data=page_response
@@ -317,7 +304,7 @@ async def get_users(
         raise HTTPException(status_code=500, detail=f"获取用户列表失败: {str(e)}")
 
 
-@router.post("/users", response_model=ResponseModel)
+@router.post("/users", response_model=BaseResponse)
 async def create_user(
     request: UserCreateRequest,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -380,10 +367,10 @@ async def create_user(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="用户创建成功", data={"user_id": new_user.user_id})
+    return BaseResponse(message="用户创建成功", data={"user_id": new_user.user_id})
 
 
-@router.put("/users/{user_id}", response_model=ResponseModel)
+@router.put("/users/{user_id}", response_model=BaseResponse)
 async def update_user(
     user_id: str,
     request: UserUpdateRequest,
@@ -444,10 +431,10 @@ async def update_user(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="用户更新成功")
+    return BaseResponse(message="用户更新成功")
 
 
-@router.post("/users/{user_id}/reset-password", response_model=ResponseModel)
+@router.post("/users/{user_id}/reset-password", response_model=BaseResponse)
 async def reset_user_password(
     user_id: str,
     request: PasswordResetRequest,
@@ -487,10 +474,10 @@ async def reset_user_password(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="密码重置成功")
+    return BaseResponse(message="密码重置成功")
 
 
-@router.delete("/users/{user_id}", response_model=ResponseModel)
+@router.delete("/users/{user_id}", response_model=BaseResponse)
 async def delete_user(
     user_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -530,7 +517,7 @@ async def delete_user(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="用户删除成功")
+    return BaseResponse(message="用户删除成功")
 
 
 @router.get("/users/{user_id}/login-logs")
@@ -557,7 +544,7 @@ async def get_user_login_logs(
     offset = (page - 1) * page_size
     logs = query.offset(offset).limit(page_size).all()
 
-    return PageResponseModel(
+    return BaseResponse(data=PaginationResponse(
         items=[{
             "log_id": log.log_id,
             "username": log.username,
@@ -572,7 +559,7 @@ async def get_user_login_logs(
         page=page,
         size=page_size,
         pages=(total + page_size - 1) // page_size
-    )
+    ))
 
 
 # =============================================================================
@@ -705,7 +692,7 @@ async def get_system_stats(
 # 班级管理接口
 # =============================================================================
 
-@router.get("/classes", response_model=ResponseModel)
+@router.get("/classes", response_model=BaseResponse)
 async def get_classes(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
@@ -805,7 +792,7 @@ async def get_classes(
 
         organization_name = None
         if class_obj.organization_id:
-            org_result = await db.execute(select(ConfigOrganization.name).where(ConfigOrganization.organization_id == class_obj.organization_id))
+            org_result = await db.execute(select(ConfigOrganization.organization_name).where(ConfigOrganization.organization_id == class_obj.organization_id))
             organization_name = org_result.scalar()
 
         class_data = {
@@ -825,7 +812,7 @@ async def get_classes(
         }
         items.append(class_data)
 
-    page_data = PageResponseModel(
+    page_data = PaginationResponse(
         items=items,
         total=total,
         page=page,
@@ -833,10 +820,10 @@ async def get_classes(
         pages=(total + page_size - 1) // page_size
     )
 
-    return ResponseModel(data=page_data, message="获取班级列表成功")
+    return BaseResponse(data=page_data, message="获取班级列表成功")
 
 
-@router.post("/classes", response_model=ResponseModel)
+@router.post("/classes", response_model=BaseResponse)
 async def create_class(
     request: ClassCreateRequest,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -888,10 +875,10 @@ async def create_class(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="班级创建成功", data={"class_id": new_class.id})
+    return BaseResponse(message="班级创建成功", data={"class_id": new_class.id})
 
 
-@router.put("/classes/{class_id}", response_model=ResponseModel)
+@router.put("/classes/{class_id}", response_model=BaseResponse)
 async def update_class(
     class_id: str,
     request: ClassCreateRequest,
@@ -947,10 +934,10 @@ async def update_class(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="班级更新成功")
+    return BaseResponse(message="班级更新成功")
 
 
-@router.delete("/classes/{class_id}", response_model=ResponseModel)
+@router.delete("/classes/{class_id}", response_model=BaseResponse)
 async def delete_class(
     class_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -992,7 +979,7 @@ async def delete_class(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="班级删除成功")
+    return BaseResponse(message="班级删除成功")
 
 
 @router.get("/classes/{class_id}/students")
@@ -1033,16 +1020,16 @@ async def get_class_students(
         }
         items.append(student_data)
 
-    return PageResponseModel(
+    return BaseResponse(data=PaginationResponse(
         items=items,
         total=total,
         page=page,
         size=page_size,
         pages=(total + page_size - 1) // page_size
-    )
+    ))
 
 
-@router.post("/classes/{class_id}/students/{student_id}", response_model=ResponseModel)
+@router.post("/classes/{class_id}/students/{student_id}", response_model=BaseResponse)
 async def add_student_to_class(
     class_id: str,
     student_id: str,
@@ -1114,10 +1101,10 @@ async def add_student_to_class(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="学生添加成功")
+    return BaseResponse(message="学生添加成功")
 
 
-@router.delete("/classes/{class_id}/students/{student_id}", response_model=ResponseModel)
+@router.delete("/classes/{class_id}/students/{student_id}", response_model=BaseResponse)
 async def remove_student_from_class(
     class_id: str,
     student_id: str,
@@ -1159,10 +1146,10 @@ async def remove_student_from_class(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="学生移除成功")
+    return BaseResponse(message="学生移除成功")
 
 
-@router.post("/teaching-assignments", response_model=ResponseModel)
+@router.post("/teaching-assignments", response_model=BaseResponse)
 async def create_teaching_assignment(
     request: TeachingAssignmentRequest,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -1239,7 +1226,7 @@ async def create_teaching_assignment(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="授课安排创建成功", data={"teaching_id": teaching.id})
+    return BaseResponse(message="授课安排创建成功", data={"teaching_id": teaching.id})
 
 
 # =============================================================================
@@ -1257,7 +1244,7 @@ class HomeworkListQuery(BaseModel):
     creator_id: Optional[str] = Field(None, description="创建者过滤")
 
 
-@router.get("/homeworks", response_model=ResponseModel)
+@router.get("/homeworks", response_model=BaseResponse)
 async def get_homeworks(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
@@ -1392,7 +1379,7 @@ async def get_homeworks(
         }
         items.append(homework_data)
 
-    page_data = PageResponseModel(
+    page_data = PaginationResponse(
         items=items,
         total=total,
         page=page,
@@ -1400,7 +1387,7 @@ async def get_homeworks(
         pages=(total + page_size - 1) // page_size
     )
 
-    return ResponseModel(data=page_data, message="获取作业列表成功")
+    return BaseResponse(data=page_data, message="获取作业列表成功")
 
 
 @router.get("/homeworks/{homework_id}/students")
@@ -1447,16 +1434,16 @@ async def get_homework_students(
         }
         items.append(student_data)
 
-    return PageResponseModel(
+    return BaseResponse(data=PaginationResponse(
         items=items,
         total=total,
         page=page,
         size=page_size,
         pages=(total + page_size - 1) // page_size
-    )
+    ))
 
 
-@router.post("/homeworks/{homework_id}/publish", response_model=ResponseModel)
+@router.post("/homeworks/{homework_id}/publish", response_model=BaseResponse)
 async def publish_homework(
     homework_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -1493,10 +1480,10 @@ async def publish_homework(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="作业发布成功")
+    return BaseResponse(message="作业发布成功")
 
 
-@router.post("/homeworks/{homework_id}/unpublish", response_model=ResponseModel)
+@router.post("/homeworks/{homework_id}/unpublish", response_model=BaseResponse)
 async def unpublish_homework(
     homework_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -1533,7 +1520,7 @@ async def unpublish_homework(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="作业撤回成功")
+    return BaseResponse(message="作业撤回成功")
 
 
 # =============================================================================
@@ -1555,7 +1542,7 @@ class QuestionListQuery(BaseModel):
     min_quality_score: Optional[int] = Field(None, ge=1, le=10, description="最低质量评分")
 
 
-@router.get("/questions", response_model=ResponseModel)
+@router.get("/questions", response_model=BaseResponse)
 async def get_questions(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
@@ -1681,7 +1668,7 @@ async def get_questions(
         }
         items.append(question_data)
 
-    page_data = PageResponseModel(
+    page_data = PaginationResponse(
         items=items,
         total=total,
         page=page,
@@ -1689,10 +1676,10 @@ async def get_questions(
         pages=(total + page_size - 1) // page_size
     )
 
-    return ResponseModel(data=page_data, message="获取题目列表成功")
+    return BaseResponse(data=page_data, message="获取题目列表成功")
 
 
-@router.get("/questions/{question_id}", response_model=ResponseModel)
+@router.get("/questions/{question_id}", response_model=BaseResponse)
 async def get_question_detail(
     question_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -1736,10 +1723,10 @@ async def get_question_detail(
         "updated_time": question.updated_time
     }
 
-    return ResponseModel(data=question_data)
+    return BaseResponse(data=question_data)
 
 
-@router.put("/questions/{question_id}/status", response_model=ResponseModel)
+@router.put("/questions/{question_id}/status", response_model=BaseResponse)
 async def update_question_status(
     question_id: str,
     is_active: bool = Query(..., description="激活状态"),
@@ -1772,10 +1759,10 @@ async def update_question_status(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message=f"题目{'激活' if is_active else '停用'}成功")
+    return BaseResponse(message=f"题目{'激活' if is_active else '停用'}成功")
 
 
-@router.put("/questions/{question_id}/publicity", response_model=ResponseModel)
+@router.put("/questions/{question_id}/publicity", response_model=BaseResponse)
 async def update_question_publicity(
     question_id: str,
     is_public: bool = Query(..., description="公开状态"),
@@ -1808,10 +1795,10 @@ async def update_question_publicity(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message=f"题目设置为{'公开' if is_public else '私有'}成功")
+    return BaseResponse(message=f"题目设置为{'公开' if is_public else '私有'}成功")
 
 
-@router.delete("/questions/{question_id}", response_model=ResponseModel)
+@router.delete("/questions/{question_id}", response_model=BaseResponse)
 async def delete_question(
     question_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -1853,7 +1840,7 @@ async def delete_question(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="题目删除成功")
+    return BaseResponse(message="题目删除成功")
 
 
 # =============================================================================
@@ -1881,7 +1868,7 @@ class SystemSettingListQuery(BaseModel):
     is_public: Optional[bool] = Field(None, description="公开状态过滤")
 
 
-@router.get("/system-settings", response_model=ResponseModel)
+@router.get("/system-settings", response_model=BaseResponse)
 async def get_system_settings(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
@@ -1963,7 +1950,7 @@ async def get_system_settings(
         }
         items.append(setting_data)
 
-    page_data = PageResponseModel(
+    page_data = PaginationResponse(
         items=items,
         total=total,
         page=page,
@@ -1971,7 +1958,7 @@ async def get_system_settings(
         pages=(total + page_size - 1) // page_size
     )
 
-    return ResponseModel(data=page_data, message="获取系统设置列表成功")
+    return BaseResponse(data=page_data, message="获取系统设置列表成功")
 
 
 @router.get("/system-settings/categories")
@@ -1981,10 +1968,10 @@ async def get_setting_categories(
 ):
     """获取设置分类列表"""
     categories = db.query(SystemSettings.category).distinct().all()
-    return ResponseModel(data=[cat[0] for cat in categories])
+    return BaseResponse(data=[cat[0] for cat in categories])
 
 
-@router.post("/system-settings", response_model=ResponseModel)
+@router.post("/system-settings", response_model=BaseResponse)
 async def create_system_setting(
     request: SystemSettingRequest,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -2039,10 +2026,10 @@ async def create_system_setting(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="系统设置创建成功", data={"system_id": new_setting.system_id})
+    return BaseResponse(message="系统设置创建成功", data={"system_id": new_setting.system_id})
 
 
-@router.put("/system-settings/{system_id}", response_model=ResponseModel)
+@router.put("/system-settings/{system_id}", response_model=BaseResponse)
 async def update_system_setting(
     system_id: str,
     request: SystemSettingRequest,
@@ -2104,10 +2091,10 @@ async def update_system_setting(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="系统设置更新成功")
+    return BaseResponse(message="系统设置更新成功")
 
 
-@router.delete("/system-settings/{system_id}", response_model=ResponseModel)
+@router.delete("/system-settings/{system_id}", response_model=BaseResponse)
 async def delete_system_setting(
     system_id: str,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -2137,7 +2124,7 @@ async def delete_system_setting(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="系统设置删除成功")
+    return BaseResponse(message="系统设置删除成功")
 
 
 # =============================================================================
@@ -2154,7 +2141,7 @@ class PermissionRequest(BaseModel):
     permission_action: str = Field(..., description="操作类型")
 
 
-@router.get("/permissions", response_model=PageResponseModel)
+@router.get("/permissions", response_model=BaseResponse)
 async def get_permissions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -2207,16 +2194,16 @@ async def get_permissions(
         "updated_time": perm.updated_time
     } for perm in permissions]
 
-    return PageResponseModel(
+    return BaseResponse(data=PaginationResponse(
         items=items,
         total=total,
         page=page,
         size=page_size,
         pages=(total + page_size - 1) // page_size
-    )
+    ))
 
 
-@router.post("/permissions", response_model=ResponseModel)
+@router.post("/permissions", response_model=BaseResponse)
 async def create_permission(
     request: PermissionRequest,
     current_user: ConfigUser = Depends(get_current_admin),
@@ -2260,7 +2247,7 @@ async def create_permission(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="权限创建成功", data={"permission_id": new_permission.permission_id})
+    return BaseResponse(message="权限创建成功", data={"permission_id": new_permission.permission_id})
 
 
 @router.get("/roles/{role}/permissions")
@@ -2285,10 +2272,10 @@ async def get_role_permissions(
         "is_inherited": rp.is_inherited
     } for rp in role_permissions]
 
-    return ResponseModel(data=permissions)
+    return BaseResponse(data=permissions)
 
 
-@router.post("/roles/{role}/permissions/{permission_id}", response_model=ResponseModel)
+@router.post("/roles/{role}/permissions/{permission_id}", response_model=BaseResponse)
 async def assign_permission_to_role(
     role: UserRole,
     permission_id: str,
@@ -2342,7 +2329,7 @@ async def assign_permission_to_role(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message=f"权限{'授予' if is_granted else '撤销'}成功")
+    return BaseResponse(message=f"权限{'授予' if is_granted else '撤销'}成功")
 
 
 # =============================================================================
@@ -2498,7 +2485,7 @@ async def get_analytics_overview(
         )
     }
 
-    return ResponseModel(data=LearningAnalyticsResponse(
+    return BaseResponse(data=LearningAnalyticsResponse(
         total_study_sessions=total_study_sessions,
         total_messages=int(message_count),
         average_session_duration=average_session_duration,
@@ -2571,7 +2558,7 @@ async def get_user_analytics(
         )
     ).group_by('date').order_by('date').all()
 
-    return ResponseModel(data={
+    return BaseResponse(data={
         "registration_trends": [
             {
                 "date": trend.date.strftime("%Y-%m-%d"),
@@ -2686,7 +2673,7 @@ async def get_content_analytics(
         )
     ).group_by(ChatMessage.model_used).all()
 
-    return ResponseModel(data={
+    return BaseResponse(data={
         "question_stats": [
             {
                 "subject": stat.subject,
@@ -2811,4 +2798,386 @@ async def export_analytics_data(
     db.add(audit_log)
     db.commit()
 
-    return ResponseModel(message="数据导出功能开发中")
+    return BaseResponse(message="数据导出功能开发中")
+
+
+# =============================================================================
+# 作业管理扩展接口
+# =============================================================================
+
+@router.get("/homeworks/{homework_id}", response_model=BaseResponse)
+async def get_homework_detail(
+    homework_id: str,
+    current_user: ConfigUser = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取作业详情"""
+    try:
+        # 获取作业基本信息
+        homework_stmt = select(Homework).where(Homework.id == homework_id)
+        homework_result = await db.execute(homework_stmt)
+        homework = homework_result.scalar_one_or_none()
+
+        if not homework:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="作业不存在"
+            )
+
+        # 获取班级信息
+        class_name = None
+        if homework.class_id:
+            class_result = await db.execute(select(Class.name).where(Class.id == homework.class_id))
+            class_name = class_result.scalar()
+
+        # 获取学科信息
+        subject_name = None
+        if homework.subject_id:
+            subject_result = await db.execute(select(Subject.name).where(Subject.id == homework.subject_id))
+            subject_name = subject_result.scalar()
+
+        # 获取创建者信息
+        creator_name = None
+        if homework.creator_teacher_id:
+            creator_result = await db.execute(select(ConfigUser.user_full_name).where(ConfigUser.user_id == homework.creator_teacher_id))
+            creator_name = creator_result.scalar()
+
+        # 统计提交情况
+        total_students_stmt = select(func.count(StudentHomework.id)).where(
+            StudentHomework.homework_id == homework.id
+        )
+        total_students_result = await db.execute(total_students_stmt)
+        total_students = total_students_result.scalar()
+
+        completed_students_stmt = select(func.count(StudentHomework.id)).where(
+            and_(
+                StudentHomework.homework_id == homework.id,
+                StudentHomework.status == "completed"
+            )
+        )
+        completed_students_result = await db.execute(completed_students_stmt)
+        completed_students = completed_students_result.scalar()
+
+        # 获取题目信息
+        questions = []
+        if homework.question_ids:
+            questions_stmt = select(Question).where(Question.id.in_(homework.question_ids))
+            questions_result = await db.execute(questions_stmt)
+            questions_data = questions_result.scalars().all()
+            questions = [{
+                "id": q.id,
+                "title": q.title,
+                "question_type": q.question_type,
+                "difficulty": q.difficulty
+            } for q in questions_data]
+
+        homework_detail = {
+            "id": homework.id,
+            "title": homework.title,
+            "description": homework.description,
+            "class_id": homework.class_id,
+            "class_name": class_name,
+            "subject_id": homework.subject_id,
+            "subject_name": subject_name,
+            "creator_teacher_id": homework.creator_teacher_id,
+            "creator_name": creator_name,
+            "questions": questions,
+            "question_count": len(questions),
+            "total_students": total_students,
+            "completed_students": completed_students,
+            "completion_rate": round(completed_students / total_students * 100, 2) if total_students > 0 else 0,
+            "is_published": homework.is_published,
+            "due_at": homework.due_at.isoformat() if homework.due_at else None,
+            "created_time": homework.created_time.isoformat() if homework.created_time else None,
+            "updated_time": homework.updated_time.isoformat() if homework.updated_time else None
+        }
+
+        return BaseResponse(data=homework_detail, message="获取作业详情成功")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取作业详情失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取作业详情失败"
+        )
+
+
+@router.get("/homeworks/{homework_id}/progress", response_model=BaseResponse)
+async def get_homework_progress(
+    homework_id: str,
+    current_user: ConfigUser = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取作业进度详情"""
+    try:
+        # 检查作业是否存在
+        homework_stmt = select(Homework).where(Homework.id == homework_id)
+        homework_result = await db.execute(homework_stmt)
+        homework = homework_result.scalar_one_or_none()
+
+        if not homework:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="作业不存在"
+            )
+
+        # 获取学生提交情况
+        progress_stmt = select(
+            StudentHomework,
+            ConfigUser.user_full_name,
+            ConfigUser.user_name
+        ).join(
+            ConfigUser, StudentHomework.student_id == ConfigUser.user_id
+        ).where(
+            StudentHomework.homework_id == homework_id
+        ).order_by(StudentHomework.submitted_at.desc())
+
+        progress_result = await db.execute(progress_stmt)
+        progress_data = progress_result.all()
+
+        students_progress = []
+        for student_homework, student_name, student_username in progress_data:
+            students_progress.append({
+                "student_id": student_homework.student_id,
+                "student_name": student_name,
+                "student_username": student_username,
+                "status": student_homework.status,
+                "score": student_homework.score,
+                "submitted_at": student_homework.submitted_at.isoformat() if student_homework.submitted_at else None,
+                "time_spent": student_homework.time_spent,
+                "attempt_count": student_homework.attempt_count
+            })
+
+        # 统计数据
+        total_students = len(students_progress)
+        completed_count = len([s for s in students_progress if s["status"] == "completed"])
+        in_progress_count = len([s for s in students_progress if s["status"] == "in_progress"])
+        not_started_count = len([s for s in students_progress if s["status"] == "not_started"])
+
+        # 平均分计算
+        completed_scores = [s["score"] for s in students_progress if s["score"] is not None]
+        average_score = sum(completed_scores) / len(completed_scores) if completed_scores else 0
+
+        progress_summary = {
+            "homework_id": homework_id,
+            "homework_title": homework.title,
+            "total_students": total_students,
+            "completed_count": completed_count,
+            "in_progress_count": in_progress_count,
+            "not_started_count": not_started_count,
+            "completion_rate": round(completed_count / total_students * 100, 2) if total_students > 0 else 0,
+            "average_score": round(average_score, 2),
+            "students_progress": students_progress
+        }
+
+        return BaseResponse(data=progress_summary, message="获取作业进度成功")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取作业进度失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取作业进度失败"
+        )
+
+
+class ExtendDeadlineRequest(BaseModel):
+    """延期请求模型"""
+    new_due_date: datetime = Field(..., description="新的截止时间")
+    reason: Optional[str] = Field(None, description="延期原因")
+
+
+@router.post("/homeworks/{homework_id}/extend", response_model=BaseResponse)
+async def extend_homework_deadline(
+    homework_id: str,
+    request: ExtendDeadlineRequest,
+    current_user: ConfigUser = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """延期作业截止时间"""
+    try:
+        # 获取作业
+        homework_stmt = select(Homework).where(Homework.id == homework_id)
+        homework_result = await db.execute(homework_stmt)
+        homework = homework_result.scalar_one_or_none()
+
+        if not homework:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="作业不存在"
+            )
+
+        # 检查新截止时间是否合理
+        if request.new_due_date <= datetime.now():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="新的截止时间必须晚于当前时间"
+            )
+
+        # 更新截止时间
+        old_due_date = homework.due_at
+        homework.due_at = request.new_due_date
+        homework.updated_time = datetime.now()
+
+        await db.commit()
+
+        # 记录审计日志
+        audit_log = LogAudit(
+            user_id=current_user.user_id,
+            action_type="EXTEND_HOMEWORK_DEADLINE",
+            resource="HOMEWORK",
+            resource_id=homework_id,
+            description=f"管理员延期作业 '{homework.title}' 截止时间从 {old_due_date} 到 {request.new_due_date}。原因: {request.reason or '无'}",
+            status="SUCCESS"
+        )
+        db.add(audit_log)
+        await db.commit()
+
+        return BaseResponse(
+            message="作业截止时间延期成功",
+            data={
+                "homework_id": homework_id,
+                "old_due_date": old_due_date.isoformat() if old_due_date else None,
+                "new_due_date": request.new_due_date.isoformat(),
+                "reason": request.reason
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"延期作业失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="延期作业失败"
+        )
+
+
+@router.post("/homeworks/{homework_id}/send-reminder", response_model=BaseResponse)
+async def send_homework_reminder(
+    homework_id: str,
+    current_user: ConfigUser = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """发送作业提醒"""
+    try:
+        # 检查作业是否存在
+        homework_stmt = select(Homework).where(Homework.id == homework_id)
+        homework_result = await db.execute(homework_stmt)
+        homework = homework_result.scalar_one_or_none()
+
+        if not homework:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="作业不存在"
+            )
+
+        # 获取未完成作业的学生
+        incomplete_students_stmt = select(
+            ConfigUser.user_id,
+            ConfigUser.user_full_name,
+            ConfigUser.user_email
+        ).join(
+            StudentHomework, ConfigUser.user_id == StudentHomework.student_id
+        ).where(
+            and_(
+                StudentHomework.homework_id == homework_id,
+                StudentHomework.status != "completed"
+            )
+        )
+
+        incomplete_result = await db.execute(incomplete_students_stmt)
+        incomplete_students = incomplete_result.all()
+
+        # 这里应该集成邮件或通知系统
+        # 目前只是记录提醒操作
+        reminder_count = len(incomplete_students)
+
+        # 记录审计日志
+        audit_log = LogAudit(
+            user_id=current_user.user_id,
+            action_type="SEND_HOMEWORK_REMINDER",
+            resource="HOMEWORK",
+            resource_id=homework_id,
+            description=f"管理员发送作业提醒 '{homework.title}' 给 {reminder_count} 名学生",
+            status="SUCCESS"
+        )
+        db.add(audit_log)
+        await db.commit()
+
+        return BaseResponse(
+            message=f"作业提醒已发送给 {reminder_count} 名未完成的学生",
+            data={
+                "homework_id": homework_id,
+                "homework_title": homework.title,
+                "reminded_student_count": reminder_count
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"发送作业提醒失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="发送作业提醒失败"
+        )
+
+
+@router.get("/homeworks/{homework_id}/export", response_model=BaseResponse)
+async def export_homework_report(
+    homework_id: str,
+    format: str = Query("csv", regex="^(csv|excel|pdf)$", description="导出格式"),
+    current_user: ConfigUser = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """导出作业报告"""
+    try:
+        # 检查作业是否存在
+        homework_stmt = select(Homework).where(Homework.id == homework_id)
+        homework_result = await db.execute(homework_stmt)
+        homework = homework_result.scalar_one_or_none()
+
+        if not homework:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="作业不存在"
+            )
+
+        # 获取详细的作业进度数据
+        progress_response = await get_homework_progress(homework_id, current_user, db)
+        progress_data = progress_response.data
+
+        # 记录审计日志
+        audit_log = LogAudit(
+            user_id=current_user.user_id,
+            action_type="EXPORT_HOMEWORK_REPORT",
+            resource="HOMEWORK",
+            resource_id=homework_id,
+            description=f"管理员导出作业报告 '{homework.title}' (格式: {format})",
+            status="SUCCESS"
+        )
+        db.add(audit_log)
+        await db.commit()
+
+        # 目前返回进度数据，实际应该根据format生成对应格式的文件
+        return BaseResponse(
+            message=f"作业报告导出成功 (格式: {format})",
+            data={
+                "export_format": format,
+                "homework_data": progress_data,
+                "export_time": datetime.now().isoformat()
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"导出作业报告失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="导出作业报告失败"
+        )

@@ -474,8 +474,8 @@ async def update_question(
         )
 
 
-class AnswerRewriteRequest(BaseModel):
-    """答案改写请求"""
+class QuestionRewriteRequest(BaseModel):
+    """题目答案重新改写请求"""
     style: str = Field("guided", description="改写风格")
     template_id: str = Field("default", description="模板ID")
     custom_instructions: Optional[str] = Field(None, description="自定义指令")
@@ -484,7 +484,7 @@ class AnswerRewriteRequest(BaseModel):
 @router.put("/{question_id}/rewrite", response_model=BaseResponse, summary="重新改写答案")
 async def rewrite_answer(
     question_id: str,
-    rewrite_request: AnswerRewriteRequest,
+    rewrite_request: QuestionRewriteRequest,
     current_user: User = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db)
 ):

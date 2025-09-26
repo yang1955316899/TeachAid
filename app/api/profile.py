@@ -13,18 +13,16 @@ from app.models.auth_models import ConfigUser
 from app.services.auth_service import get_current_user
 
 
-router = APIRouter(prefix="/auth", tags=["认证"])
+router = APIRouter(prefix="/profile", tags=["用户资料"])
 
 
-class UpdateProfileRequest(BaseModel):
-    """更新个人资料请求"""
-    user_email: Optional[EmailStr] = Field(None, description="邮箱地址")
-    user_full_name: Optional[str] = Field(None, max_length=100, description="真实姓名")
+# 使用统一的UserProfileUpdateRequest模型
+from app.models.pydantic_models import UserProfileUpdateRequest
 
 
 @router.put("/profile", summary="更新用户资料")
 async def update_user_profile(
-    request_data: UpdateProfileRequest,
+    request_data: UserProfileUpdateRequest,
     current_user: ConfigUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):

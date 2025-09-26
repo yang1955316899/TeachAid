@@ -16,6 +16,7 @@ from app.services.auth_service import (
     get_current_student
 )
 from app.models.auth_models import ConfigUser, UserRole, UserStatus
+from app.models.pydantic_models import BaseResponse, UserProfileUpdateRequest
 
 
 # =============================================================================
@@ -50,12 +51,7 @@ class TokenResponse(BaseModel):
     user: Dict[str, Any]
 
 
-class BaseResponse(BaseModel):
-    """基础响应"""
-    success: bool = True
-    message: str = "操作成功"
-    data: Optional[Dict[str, Any]] = None
-
+# BaseResponse已在app.models.pydantic_models中定义，删除重复定义
 
 class UserProfileResponse(BaseModel):
     """用户资料响应"""
@@ -287,13 +283,7 @@ async def get_user_profile(
         )
 
 
-class UserProfileUpdateRequest(BaseModel):
-    """用户资料更新请求"""
-    user_full_name: Optional[str] = Field(None, max_length=100, description="真实姓名")
-    user_email: Optional[EmailStr] = Field(None, description="邮箱地址")
-    user_settings: Optional[Dict[str, Any]] = Field(None, description="用户设置")
-    user_preferences: Optional[Dict[str, Any]] = Field(None, description="用户偏好")
-
+# UserProfileUpdateRequest已移到app.models.pydantic_models中
 
 @router.put("/profile", response_model=BaseResponse, summary="更新用户资料")
 async def update_user_profile(

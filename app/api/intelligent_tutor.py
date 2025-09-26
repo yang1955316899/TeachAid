@@ -15,7 +15,7 @@ from app.services.tutor_context_service import tutor_context_service
 from app.services.auth_service import get_current_user
 
 
-router = APIRouter(prefix="/api/intelligent-tutor", tags=["智能教学"])
+router = APIRouter(prefix="/intelligent-tutor", tags=["智能教学"])
 
 
 class StartSessionRequest(BaseModel):

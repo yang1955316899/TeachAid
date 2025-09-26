@@ -113,6 +113,14 @@ class UserLogin(BaseModel):
     password: str
 
 
+class UserProfileUpdateRequest(BaseModel):
+    """用户资料更新请求模型"""
+    user_full_name: Optional[str] = Field(None, max_length=100, description="真实姓名")
+    user_email: Optional[EmailStr] = Field(None, description="邮箱地址")
+    user_settings: Optional[Dict[str, Any]] = Field(None, description="用户设置")
+    user_preferences: Optional[Dict[str, Any]] = Field(None, description="用户偏好")
+
+
 class TokenResponse(BaseModel):
     """令牌响应模型"""
     access_token: str

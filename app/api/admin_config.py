@@ -18,7 +18,7 @@ from app.services.auth_service import get_current_user, require_admin
 from app.core.unified_ai_framework import UnifiedAIFramework
 
 
-router = APIRouter(prefix="/api/admin", tags=["管理员配置"])
+router = APIRouter(prefix="/admin/config", tags=["管理员配置"])
 
 # ============================================================================
 # Pydantic模型定义

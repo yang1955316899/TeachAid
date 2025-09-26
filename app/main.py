@@ -215,25 +215,37 @@ async def general_exception_handler(request: Request, exc: Exception):
     return await error_handler.handle_exception(request, exc)
 
 
-# 注册路由
+# 注册路由 - 按功能模块分组，统一使用/api前缀
+
+# 基础认证模块
 app.include_router(auth.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
-app.include_router(questions.router, prefix="/api")
-app.include_router(chat.router, prefix="/api")
 app.include_router(public.router, prefix="/api")
-app.include_router(classes.router, prefix="/api")
+
+# 核心业务模块
+app.include_router(questions.router, prefix="/api")
 app.include_router(homework.router, prefix="/api")
-app.include_router(prompts.router, prefix="/api")
-app.include_router(files.router, prefix="/api")
-app.include_router(rewriter.router, prefix="/api")
-app.include_router(homework.router_student, prefix="/api")
-app.include_router(analytics.router, prefix="/api")
-app.include_router(taxonomy.router, prefix="/api")
-app.include_router(teaching.router, prefix="/api")
+app.include_router(homework.router_student, prefix="/api")  # 学生作业视图
+app.include_router(classes.router, prefix="/api")
 app.include_router(notes.router, prefix="/api")
-app.include_router(intelligent_tutor.router)
-app.include_router(admin.router)
-app.include_router(admin_config.router)
+
+# AI功能模块
+app.include_router(chat.router, prefix="/api")
+app.include_router(intelligent_tutor.router, prefix="/api")
+app.include_router(rewriter.router, prefix="/api")
+app.include_router(prompts.router, prefix="/api")
+
+# 数据分析模块
+app.include_router(analytics.router, prefix="/api")
+
+# 管理配置模块
+app.include_router(teaching.router, prefix="/api")
+app.include_router(taxonomy.router, prefix="/api")
+app.include_router(files.router, prefix="/api")
+
+# 管理员模块
+app.include_router(admin.router, prefix="/api")
+app.include_router(admin_config.router, prefix="/api")
 
 
 # 根路径
